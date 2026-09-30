@@ -15,15 +15,9 @@ Appointment booking API for outpatient clinics. Patients create an account, brow
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Client["Patient client<br/>(web / mobile / curl)"] -->|HTTPS + Bearer token| API
-    subgraph API["MediBook API (FastAPI)"]
-        Auth["Session check<br/>(identity from token only)"] --> Routes["Booking routes"]
-        Routes --> Validation["Request validation<br/>(Pydantic, strict)"]
-    end
-    Routes --> DB[("SQLite<br/>patients · sessions · slots · appointments")]
-```
+![System architecture](diagrams/architecture.drawio.png)
+
+Target production architecture on AWS. Edit `diagrams/architecture.drawio.png` in VS Code with the Draw.io Integration extension, or at [app.diagrams.net](https://app.diagrams.net).
 
 | Component | Technology | Purpose |
 | --- | --- | --- |
