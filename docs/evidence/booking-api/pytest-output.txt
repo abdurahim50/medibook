@@ -1,0 +1,31 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/cyberops/code/medibook/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/yongh/code/medibook
+plugins: anyio-4.15.1
+collecting ... collected 16 items
+
+tests/test_api.py::test_health_returns_ok PASSED                         [  6%]
+tests/test_api.py::test_signup_does_not_return_password_or_hash PASSED   [ 12%]
+tests/test_api.py::test_duplicate_email_is_rejected_case_insensitively PASSED [ 18%]
+tests/test_api.py::test_wrong_password_and_unknown_email_give_same_error PASSED [ 25%]
+tests/test_api.py::test_protected_route_requires_token PASSED            [ 31%]
+tests/test_api.py::test_signout_invalidates_token PASSED                 [ 37%]
+tests/test_api.py::test_patient_can_book_and_view_own_appointment PASSED [ 43%]
+tests/test_api.py::test_patient_list_excludes_other_patients_appointments PASSED [ 50%]
+tests/test_api.py::test_double_booking_is_rejected PASSED                [ 56%]
+tests/test_api.py::test_booking_unknown_slot_returns_404 PASSED          [ 62%]
+tests/test_api.py::test_bad_booking_input_returns_422[body0] PASSED      [ 68%]
+tests/test_api.py::test_bad_booking_input_returns_422[body1] PASSED      [ 75%]
+tests/test_api.py::test_bad_booking_input_returns_422[body2] PASSED      [ 81%]
+tests/test_api.py::test_bad_booking_input_returns_422[body3] PASSED      [ 87%]
+tests/test_api.py::test_bad_booking_input_returns_422[body4] PASSED      [ 93%]
+tests/test_api.py::test_short_password_is_rejected PASSED                [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /home/yongh/code/medibook/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 16 passed, 1 warning in 1.50s =========================
