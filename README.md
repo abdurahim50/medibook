@@ -70,7 +70,3 @@ The repository is intended to remain private initially. Confirm that the intende
 - [ ] Checkpoint 4: Secure the delivery pipeline (PR checks, failing fixture)
 - [ ] Checkpoint 5: Deploy, observe and recover (least-privilege deploy, runbook)
 - [ ] Checkpoint 6: Package and explain (overview, walkthrough)
-
-## AI use disclosure
-
-AI tools (Claude) assisted with drafting and reviewing documentation and design decisions. I review every change, and I can explain the decisions and implementation in my own words. AI assistance for later code will be disclosed in this section.
