@@ -1,72 +1,117 @@
 # MediBook
 
-MediBook is a fictional clinic appointment booking service, built by Abdurahim Yongho as an independent security portfolio project. The first version will let a patient sign up, sign in, book an appointment and view only their own appointments.
+Appointment booking API for outpatient clinics. Patients create an account, browse open appointment slots, book a visit and manage their own bookings.
 
-Read the [company brief](docs/brief.md) for the main user journey, protected data and three most important assets. Track demonstrated work in the [evidence index](docs/evidence.md).
+> **Data notice:** this environment runs on synthetic data only. It holds no real patient information and is not intended for clinical use.
 
-## Current status
+## Features
 
-Checkpoint 1: company definition and documentation prepared. This repository contains a plan, not a running application. No application code, tests or deployments exist yet. Verification of the repository, commits and reviewer access is tracked in the [evidence index](docs/evidence.md).
+- Patient registration, sign-in and sign-out
+- Browse available appointment slots across clinics
+- Book a slot, with double booking prevented at the database level
+- View your own appointments
+- Health endpoint for monitoring
+- Interactive API documentation at `/docs`
 
-## Scope
+## Architecture
 
-In scope for the first working slice:
+```mermaid
+flowchart LR
+    Client["Patient client<br/>(web / mobile / curl)"] -->|HTTPS + Bearer token| API
+    subgraph API["MediBook API (FastAPI)"]
+        Auth["Session check<br/>(identity from token only)"] --> Routes["Booking routes"]
+        Routes --> Validation["Request validation<br/>(Pydantic, strict)"]
+    end
+    Routes --> DB[("SQLite<br/>patients · sessions · slots · appointments")]
+```
 
-- Patient sign-up, sign-in and sign-out using synthetic accounts.
-- Viewing a small, seeded set of available appointment slots.
-- Booking an available slot and receiving confirmation.
-- Viewing appointments belonging to the signed-in patient.
-- A health endpoint and controlled errors for invalid input.
-
-Out of scope for the first working slice:
-
-- Payments and insurance processing.
-- Real patient information or real clinical use.
-- Staff/admin portals, appointment cancellation and rescheduling.
-- AI intake assistance. This is a later phase after the booking journey works.
-- Cloud deployment. Local operation comes first.
-
-## Planned stack and why
-
-| Technology | Planned purpose | Reason for choosing it |
+| Component | Technology | Purpose |
 | --- | --- | --- |
-| Python + FastAPI | Application routes, input validation and booking logic | A focused Python API with a clear request/response model that I can explain. |
-| SQLite | Local storage for synthetic accounts, slots and appointments | Keeps local setup small without a separate database service. Production suitability will be assessed later. |
-| Docker | Package the application and its dependencies | Supports repeatable startup across development environments. |
-| GitHub Actions | Run tests and relevant security checks on changes | Makes validation repeatable and provides linked failing/passing runs as evidence. |
+| API | Python 3.14, FastAPI | Routing, request validation, OpenAPI docs |
+| Data store | SQLite | Patients, sessions, slots and appointments |
+| Password hashing | argon2id (`argon2-cffi`) | Memory-hard hashing with per-password salt |
+| Sessions | Server-side, opaque tokens | Revocable on sign-out; only a SHA-256 digest is stored |
+| Tests | pytest, FastAPI TestClient | Isolated database per test |
 
-pytest is planned for automated tests. AWS ECS Fargate is a later deployment candidate; no cloud resources will be created until architecture, cost and cleanup are documented.
+## API
 
-## Local setup plan: not executable yet
+All endpoints except `/health`, `/auth/signup` and `/auth/signin` require `Authorization: Bearer <token>`.
 
-Planned prerequisites: Ubuntu/WSL2 or a comparable Linux environment, Git, Python 3 with virtual-environment support, and a browser or HTTP client. Docker will be needed for the container phase. Exact supported versions will be recorded in Checkpoint 2.
+| Method | Path | Description | Success |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Service and database health | `200` |
+| `POST` | `/auth/signup` | Register a patient | `201` |
+| `POST` | `/auth/signin` | Sign in and receive a session token | `200` |
+| `POST` | `/auth/signout` | Revoke the current session | `204` |
+| `GET` | `/slots` | List open appointment slots | `200` |
+| `POST` | `/appointments` | Book a slot (`{"slot_id": 1}`) | `201` |
+| `GET` | `/appointments` | List the signed-in patient's appointments | `200` |
+| `GET` | `/appointments/{id}` | Get one appointment | `200` |
 
-The intended sequence is:
+Error responses: `401` not authenticated, `404` not found, `409` conflict (email taken or slot already booked), `422` invalid input.
 
-1. Clone the repository and enter its root directory.
-2. Create a Python virtual environment with `python3 -m venv .venv`. A virtual environment isolates project dependencies from system Python.
-3. Activate it with `source .venv/bin/activate` so Python and package installation use that environment.
-4. Install the recorded dependencies with `python -m pip install -r requirements.txt` once that file exists.
-5. Follow the documented database initialization and synthetic-data seeding steps once implemented.
-6. Start the planned entry point using `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`. This serves the future FastAPI application on the local machine only.
-7. Check the health endpoint, complete the patient booking journey and run `python -m pytest` once the tests exist.
-8. Repeat the documented steps in a fresh clone and save the actual output.
+## Getting started
 
-`requirements.txt`, the application entry point, database initialization and tests do not exist yet. Checkpoint 2 will turn this plan into verified startup instructions.
+**Prerequisites:** Linux or WSL2, Git, Python 3.14
 
-## Security note
+```bash
+git clone https://github.com/abdurahim50/medibook.git
+cd medibook
+python3 -m venv .venv && source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python -m app.seed
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-Training repo, synthetic data only, no real PHI. MediBook is not a clinical service or a claim of HIPAA compliance. Use fictional identities and reserved example email addresses. Keep passwords, tokens, local databases and real patient information out of commits, logs and screenshots.
+- Health check: <http://127.0.0.1:8000/health>
+- API docs: <http://127.0.0.1:8000/docs>
 
-The planned security boundary is the backend: it will derive patient identity from the authenticated session and enforce appointment ownership on every lookup. These controls are requirements, not completed implementation claims.
+The seed script creates two clinics with open slots and two demo patients (`alex.rivera@example.com`, `sam.taylor@example.com`). It prints a random demo password once; set `MEDIBOOK_SEED_PASSWORD` to choose your own. Run `python -m app.seed --reset` to rebuild the local database.
 
-The repository is intended to remain private initially. Confirm that the intended reviewer has authorized access before recording reviewer-access evidence or submitting the portfolio.
+### Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MEDIBOOK_DB` | `medibook.db` | Path to the SQLite database file |
+| `MEDIBOOK_SEED_PASSWORD` | random | Password assigned to demo patients by the seed script |
+
+Set these as environment variables (for example `export MEDIBOOK_DB=/tmp/medibook.db`). `.env.example` lists every supported variable. Never commit a `.env` file.
+
+## Testing
+
+```bash
+python -m pytest -v
+```
+
+Each test runs against its own temporary database. The suite covers authentication, the booking journey, double booking and input validation.
+
+## Project structure
+
+```
+app/
+  main.py      API routes and the session dependency
+  auth.py      password hashing and session management
+  db.py        database connection and schema
+  models.py    request and response models
+  seed.py      synthetic data loader
+tests/
+  test_api.py  API test suite
+docs/
+  brief.md     product brief: users, data and assets
+  evidence.md  delivery evidence by milestone
+SECURITY.md    security controls and known issues
+```
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the security model, known issues and how to report a vulnerability.
 
 ## Roadmap
 
-- [x] Checkpoint 1: Choose your company (brief, scope, assets)
-- [ ] Checkpoint 2: Build a working slice (booking journey, health check, controlled errors)
-- [ ] Checkpoint 3: Attack and defend the feature (threat model, before/after test)
-- [ ] Checkpoint 4: Secure the delivery pipeline (PR checks, failing fixture)
-- [ ] Checkpoint 5: Deploy, observe and recover (least-privilege deploy, runbook)
-- [ ] Checkpoint 6: Package and explain (overview, walkthrough)
+- [x] Booking API with authentication and validation
+- [ ] Appointment ownership enforcement on single-record lookups
+- [ ] CI pipeline with automated tests and security scanning
+- [ ] Container image and AWS deployment
+- [ ] Logging, alerting and recovery runbook
+- [ ] Clinic staff portal
+- [ ] AI-assisted patient intake
