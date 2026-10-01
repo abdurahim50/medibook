@@ -108,7 +108,7 @@ Protected endpoints require `Authorization: Bearer <access_token>`.
 | `GET` | `/slots` | List open appointment slots | Required | `200` |
 | `POST` | `/appointments` | Book a slot | Required | `201` |
 | `GET` | `/appointments` | List the signed-in patient's appointments | Required | `200` |
-| `GET` | `/appointments/{appointment_id}` | Get one appointment (see [known issues](#known-limitations)) | Required | `200` |
+| `GET` | `/appointments/{appointment_id}` | Get one of the signed-in patient's appointments | Required | `200` |
 
 **Booking request:**
 
@@ -118,7 +118,7 @@ Protected endpoints require `Authorization: Bearer <access_token>`.
 
 `slot_id` must be a positive integer. Patient identity always comes from the session; unknown fields, including a client-supplied `patient_id`, are rejected.
 
-**Errors:** `401` invalid or missing authentication, `404` record not found, `409` email already registered or slot already booked, `422` invalid request data.
+**Errors:** `401` invalid or missing authentication, `404` record not found or owned by another patient, `409` email already registered or slot already booked, `422` invalid request data.
 
 ## Configuration
 
@@ -142,10 +142,14 @@ This permanently deletes all accounts, sessions and bookings in that database.
 ## Testing
 
 ```bash
+# Activate the project's Python environment.
+source .venv/bin/activate
+
+# Run the tests; -q requests concise output.
 python -m pytest -q
 ```
 
-Each test runs against its own temporary SQLite database. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking and input validation.
+Each test runs against its own temporary SQLite database. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking, input validation and cross-patient access control.
 
 ## Project structure
 
@@ -159,8 +163,9 @@ app/
 tests/
   test_api.py  API test suite
 docs/
-  brief.md     product brief: users, data and assets
-  evidence.md  delivery evidence by milestone
+  brief.md         product brief: users, data and assets
+  threat-model.md  data flow, STRIDE analysis and controls
+  evidence.md      delivery evidence by milestone
 diagrams/
   architecture.drawio.png   editable architecture diagram
 SECURITY.md    security controls, known issues, reporting
@@ -168,8 +173,8 @@ SECURITY.md    security controls, known issues, reporting
 
 ## Known limitations
 
-- **MB-001:** `GET /appointments/{appointment_id}` authenticates the caller but does not yet enforce ownership, so a signed-in patient can read another patient's appointment by ID. This must be fixed before any shared or production deployment. Tracked in [SECURITY.md](SECURITY.md).
 - API only; no patient web interface yet.
+- No rate limiting on sign-in and no audit log yet. See [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - Containerisation, CI/CD and cloud deployment are planned.
 
@@ -180,7 +185,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 ## Roadmap
 
 - [x] Booking API with authentication and validation
-- [ ] Appointment ownership enforcement on single-record lookups
+- [x] Appointment ownership enforcement on single-record lookups
 - [ ] CI pipeline with automated tests and security scanning
 - [ ] Container image and AWS deployment
 - [ ] Logging, alerting and recovery runbook

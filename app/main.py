@@ -160,13 +160,16 @@ def list_my_appointments(patient_id: int = Depends(current_patient_id)):
 
 
 @app.get("/appointments/{appointment_id}", response_model=AppointmentResponse)
-def get_appointment(appointment_id: int, _: int = Depends(current_patient_id)):
-    # KNOWN GAP (tracked in docs/evidence.md): this lookup does not check ownership.
-    # Any signed-in patient can read any appointment by ID (IDOR).
-    # Deliberately left for the access-control fix and before/after test.
+def get_appointment(appointment_id: int, patient_id: int = Depends(current_patient_id)):
+    # Ownership is enforced in the query itself (MB-001): a patient can only
+    # match their own appointments. Someone else's ID returns 404, the same as
+    # a missing record, so the response never confirms that the ID exists.
     conn = get_connection()
     try:
-        row = conn.execute(_APPOINTMENT_SELECT + " WHERE a.id = ?", (appointment_id,)).fetchone()
+        row = conn.execute(
+            _APPOINTMENT_SELECT + " WHERE a.id = ? AND a.patient_id = ?",
+            (appointment_id, patient_id),
+        ).fetchone()
     finally:
         conn.close()
     if row is None:
