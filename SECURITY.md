@@ -9,6 +9,7 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Area | Control |
 | --- | --- |
 | Identity | Patient identity is derived only from the session token, never from request data |
+| Authorization | Every appointment query is scoped to the signed-in patient; records owned by others return `404` |
 | Passwords | argon2id hashing; minimum length 12; plaintext never stored or returned |
 | Sessions | 256-bit random tokens; only a SHA-256 digest is stored; 8-hour expiry; revoked on sign-out |
 | Sign-in | Identical error for unknown email and wrong password, to prevent account enumeration |
@@ -22,10 +23,11 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 
 | ID | Severity | Summary | Status |
 | --- | --- | --- | --- |
-| MB-001 | High | `GET /appointments/{id}` checks that the caller is signed in but not that they own the appointment. Any signed-in patient can read another patient's booking by ID (broken object-level authorization). | Open, fix in progress |
+| MB-001 | High | `GET /appointments/{id}` checked that the caller was signed in but not that they owned the appointment, so a signed-in patient could read another patient's booking by ID (broken object-level authorization). | **Fixed.** Lookup is scoped to the session's patient; other patients' IDs return `404`. Covered by a regression test. |
 
 ## Limitations
 
 - SQLite is used for local development; a managed database is planned for production.
 - No rate limiting on sign-in yet.
+- No audit log of access to appointment records yet.
 - Email format is checked with a pattern, not verified by confirmation email.
