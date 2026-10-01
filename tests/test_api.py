@@ -155,3 +155,24 @@ def test_short_password_is_rejected(client):
         json={"full_name": "Alex", "email": "alex@example.com", "password": "short"},
     )
     assert response.status_code == 422
+
+# ---------- Access control (TM-01 / MB-001) ----------
+
+def test_patient_can_read_own_appointment(client):
+    alex = signup_and_signin(client, "alex@example.com")
+    booked = client.post("/appointments", json={"slot_id": 1}, headers=alex).json()
+    response = client.get(f"/appointments/{booked['id']}", headers=alex)
+    assert response.status_code == 200
+    assert response.json()["id"] == booked["id"]
+
+
+def test_patient_cannot_read_another_patients_appointment(client):
+    alex = signup_and_signin(client, "alex@example.com")
+    sam = signup_and_signin(client, "sam@example.com")
+    booked = client.post("/appointments", json={"slot_id": 1}, headers=alex).json()
+
+    response = client.get(f"/appointments/{booked['id']}", headers=sam)
+
+    # 404, not 403: a 403 would confirm the appointment exists.
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Appointment not found"}
