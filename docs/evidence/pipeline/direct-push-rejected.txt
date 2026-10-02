@@ -1,0 +1,24 @@
+~/code/medibook$    git switch main
+   git commit --allow-empty -s -m "test: direct push"
+   git push origin main
+Switched to branch 'main'
+Your branch is ahead of 'origin/main' by 1 commit.
+  (use "git push" to publish your local commits)
+[main b89ddb2] test: direct push
+Enumerating objects: 2, done.
+Counting objects: 100% (2/2), done.
+Delta compression using up to 22 threads
+Compressing objects: 100% (2/2), done.
+Writing objects: 100% (2/2), 279 bytes | 279.00 KiB/s, done.
+Total 2 (delta 1), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (1/1), done.
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: Review all repository rules at https://github.com/abdurahim50/medibook/rules?ref=refs%2Fheads%2Fmain
+remote: 
+remote: - Changes must be made through a pull request.
+remote: 
+remote: - 5 of 5 required status checks are expected.
+remote: 
+To https://github.com/abdurahim50/medibook.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/abdurahim50/medibook.git'
