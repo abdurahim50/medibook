@@ -17,6 +17,7 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Data integrity | Foreign keys enforced; `UNIQUE(slot_id)` prevents double booking, including under concurrent requests |
 | Database access | Parameterised queries only |
 | Secrets | No credentials in the repository; `.env` files are git-ignored |
+| Delivery pipeline | Every change to `main` goes through a pull request that must pass tests, SAST, dependency and secret scans |
 | Data minimisation | No symptoms, diagnoses, date of birth, insurance or payment data collected |
 
 ## Known issues

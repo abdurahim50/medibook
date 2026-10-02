@@ -51,6 +51,7 @@ The current release runs locally with SQLite. Containerisation and AWS deploymen
 | Password hashing | argon2id (`argon2-cffi`) | Memory-hard hashing with a per-password salt |
 | Sessions | Opaque bearer tokens | Random 256-bit tokens; only a SHA-256 digest is stored |
 | Tests | pytest, FastAPI TestClient | Isolated database per test |
+| CI | GitHub Actions | Tests, SAST, dependency and secret scans on every pull request |
 
 See the [product brief](docs/brief.md) for users, protected data and scope.
 
@@ -151,21 +152,38 @@ python -m pytest -q
 
 Each test runs against its own temporary SQLite database. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking, input validation and cross-patient access control.
 
+### Continuous integration
+
+Every pull request and push to `main` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+| Check | Tool | Fails when |
+| --- | --- | --- |
+| Tests | pytest | Any test fails |
+| SAST | Bandit, Semgrep (`p/python`, `p/owasp-top-ten`) | Bandit reports a medium or higher severity issue, or Semgrep reports any finding |
+| Dependency scan | pip-audit | A pinned package has a known vulnerability or cannot be checked |
+| Secret scan | gitleaks | A secret is found anywhere in the git history |
+
+The workflow has read-only repository permissions, actions are pinned by commit SHA and the gitleaks binary is verified by checksum. `main` is protected: changes arrive only through pull requests, and all checks plus the DCO sign-off must pass before merge.
+
 ## Project structure
 
 ```
+.github/workflows/
+  ci.yml       tests and security scans
 app/
   main.py      API routes and session dependency
   auth.py      password hashing and session management
   db.py        database connection and schema
   models.py    request and response models
   seed.py      demo data loader
+  search.py    slot search by clinic
 tests/
   test_api.py  API test suite
 docs/
   brief.md         product brief: users, data and assets
   threat-model.md  data flow, STRIDE analysis and controls
   evidence.md      delivery evidence by milestone
+  evidence/        captured test and pipeline output
 diagrams/
   architecture.drawio.png   editable architecture diagram
 SECURITY.md    security controls, known issues, reporting
@@ -176,7 +194,7 @@ SECURITY.md    security controls, known issues, reporting
 - API only; no patient web interface yet.
 - No rate limiting on sign-in and no audit log yet. See [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
-- Containerisation, CI/CD and cloud deployment are planned.
+- Containerisation, continuous deployment and cloud hosting are planned.
 
 ## Security
 
@@ -186,7 +204,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 
 - [x] Booking API with authentication and validation
 - [x] Appointment ownership enforcement on single-record lookups
-- [ ] CI pipeline with automated tests and security scanning
+- [x] CI pipeline with automated tests and security scanning
 - [ ] Container image and AWS deployment
 - [ ] Logging, alerting and recovery runbook
 - [ ] Clinic staff portal
