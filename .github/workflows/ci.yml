@@ -120,3 +120,36 @@ jobs:
 
       - name: Scan git history for secrets
         run: ./gitleaks git . --redact --no-banner --exit-code 1
+
+  image:
+    name: Image scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TRIVY_VERSION: "0.75.0"
+      # SHA-256 of trivy_0.75.0_Linux-64bit.tar.gz from the official release
+      TRIVY_SHA256: "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The CLI binary is used instead of a marketplace action, and only runs
+      # if its checksum matches, so a re-pointed tag cannot change what executes.
+      - name: Install Trivy
+        run: |
+          curl -sSfL -o trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum --check --strict
+          tar -xzf trivy.tar.gz trivy
+
+      - name: Scan Dockerfile for misconfigurations
+        run: ./trivy config --exit-code 1 --severity HIGH,CRITICAL .
+
+      - name: Build image
+        run: docker build -t medibook:${{ github.sha }} .
+
+      # Fails on HIGH or CRITICAL vulnerabilities that have a fix available.
+      - name: Scan image for vulnerabilities
+        run: ./trivy image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 --no-progress medibook:${{ github.sha }}
