@@ -61,7 +61,7 @@ jobs:
         run: python -m pip install bandit==1.9.4 semgrep==1.178.0
 
       - name: Bandit (python secuirty linter)
-        run: bandit -r app --severity-level medium --confidence medium
+        run: bandit -r app --severity-level medium --confidence-level medium
 
       - name: Semgrep (OWASP and python rules)
         run: semgrep --config p/python --config p/owasp-top-ten --error --metrics=off app
