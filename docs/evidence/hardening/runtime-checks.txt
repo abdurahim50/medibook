@@ -1,0 +1,35 @@
+# Container runtime checks (local, Docker on WSL2), 2026-10-02
+# Run flags: --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges -v medibook-data:/data
+
+$ curl -s localhost:8000/health
+{"status":"ok"}
+
+$ docker exec medibook id
+uid=10001(medibook) gid=10001(medibook) groups=10001(medibook)
+
+$ docker ps --filter name=medibook --format '{{.Status}}'
+Up About a minute (healthy)
+
+$ docker images medibook:dev --format '{{.Size}}'
+159MB
+
+# Image scan (Trivy, CI)
+# Run #19 failed: 5 fixable HIGH findings (libpcre2-8-0 CVE-2026-103111 in Debian;
+# msgpack, urllib3 x2 and setuptools vendored inside pip).
+#   https://github.com/abdurahim50/medibook/actions/runs/37028975294
+# Fix: OS security updates in the image; pip removed from the runtime image.
+# Run #20 passed.
+
+# Sign-in throttling (MB-002): 5 failed attempts, then refused
+$ for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/auth/signin \
+    -H 'Content-Type: application/json' -d '{"email":"probe@example.com","password":"wrong-password"}'; done
+401
+401
+401
+401
+401
+429
+
+# Audit log entry for the refused attempt (MB-003)
+$ docker logs medibook | grep rate_limited
+{"ts":"2026-10-03T03:25:22.408+00:00","type":"audit","event":"auth.signin","outcome":"denied","request_id":"3e6d4217b3584891b67648eaf0f9a018","client_ip":"172.17.0.1","reason":"rate_limited"}
