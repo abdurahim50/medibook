@@ -44,14 +44,15 @@ Every request crosses the Internet boundary, so everything in it is untrusted: t
 | --- | --- | --- | --- | --- | --- |
 | TM-01 | Information disclosure | A signed-in patient reads another patient's appointment by changing the ID in `GET /appointments/{id}` (broken object-level authorization, OWASP API1) | Authorization | Ownership check scoped to the session's `patient_id` | **Mitigated (MB-001 fixed)** |
 | TM-02 | Spoofing | Stolen or replayed session token | Session check | Random 256-bit tokens, hashed at rest, 8-hour expiry, revoked on sign-out | Mitigated |
-| TM-03 | Spoofing | Online password guessing against `/auth/signin` | Session check | argon2id slows offline cracking; no rate limiting yet | Open (accepted for now) |
+| TM-03 | Spoofing | Online password guessing or credential stuffing against `/auth/signin` | Session check | Failed sign-ins throttled per account (5) and per client (20) in a 15-minute window; `429` with `Retry-After`; argon2id slows offline cracking | **Mitigated (MB-002)** |
 | TM-04 | Information disclosure | Account enumeration through sign-in errors | Session check | Identical `401` for unknown email and wrong password | Mitigated |
 | TM-05 | Tampering | Client books on behalf of another patient by sending `patient_id` | Request validation | Unknown fields rejected; identity only from the session | Mitigated |
 | TM-06 | Tampering | SQL injection through body or path values | Route handler | Parameterised queries only | Mitigated |
 | TM-07 | Tampering | Two patients book the same slot concurrently | Data store | `UNIQUE(slot_id)` enforced by the database | Mitigated |
 | TM-08 | Information disclosure | Password hash or token leaked in API responses | Route handler | Response models exclude secret fields | Mitigated |
-| TM-09 | Repudiation | No record of who accessed or changed which appointment | Route handler | No audit logging yet | Open |
+| TM-09 | Repudiation | No record of who accessed or changed which appointment | Route handler | Structured JSON audit log of sign-in, booking and appointment access, with request ID and client address; cross-patient attempts logged as `denied` | **Mitigated (MB-003)** |
 | TM-10 | Denial of service | Oversized request bodies | Request validation | Field length limits | Partially mitigated |
+| TM-11 | Elevation of privilege | Vulnerable package in the container image, or a compromised API process taking over the host | Runtime | Non-root user, read-only root filesystem, all Linux capabilities dropped, pip removed from the image, image scanned in CI | Mitigated |
 
 ## Selected threat: TM-01
 
@@ -81,5 +82,6 @@ The control sits at the **API process trust boundary**, step 3 in the data flow.
 
 - **Per-query enforcement.** Ownership is enforced in each query rather than in one shared layer. Every new endpoint that reads patient data must include the same filter and a cross-patient test.
 - **Predictable IDs.** Appointment IDs are sequential integers. They no longer expose data, but they reveal roughly how many bookings exist.
-- **No audit trail (TM-09).** Denied cross-patient requests are not logged, so probing attempts go unnoticed.
+- **Audit log is local to each container (TM-09).** Events go to standard output. Retention, alerting and tamper resistance depend on the log platform (CloudWatch, planned).
+- **Per-container rate limits (TM-03).** Counters are held in memory, so each container counts separately. A WAF rate-based rule at the edge is the shared control. An attacker can trigger a temporary throttle on another patient's account; it is not a permanent lockout.
 - **Single role.** Clinic staff will need access to their clinic's appointments; that requires role-based rules beyond patient ownership.
