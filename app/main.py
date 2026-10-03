@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import audit, auth
+from app.ratelimit import SigninLimiter
 from app.db import get_connection, init_db
 from app.models import (
     AppointmentResponse,
@@ -19,8 +20,9 @@ from app.models import (
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
     init_db()
+    app.state.signin_limiter = SigninLimiter()
     yield
 
 
@@ -97,7 +99,20 @@ def signup(body: SignupRequest):
 
 
 @app.post("/auth/signin", response_model=TokenResponse)
-def signin(body: SigninRequest):
+def signin(body: SigninRequest, request: Request):
+    # MB-002: refuse before checking the password, so a blocked caller cannot
+    # keep guessing and does not cost an argon2 verification.
+    limiter: SigninLimiter = request.app.state.signin_limiter
+    client = audit.client_ip.get() or "unknown"
+    wait = limiter.retry_after(body.email, client)
+    if wait:
+        audit.event("auth.signin", "denied", reason="rate_limited")
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many sign-in attempts. Try again later.",
+            headers={"Retry-After": str(wait)},
+        )
+
     conn = get_connection()
     try:
         row = conn.execute(
@@ -108,11 +123,14 @@ def signin(body: SigninRequest):
     # Same message for unknown email and wrong password: no account enumeration.
     # The log records which case it was; the client never learns.
     if row is None:
+        limiter.record_failure(body.email, client)
         audit.event("auth.signin", "failure", reason="unknown_account")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not auth.verify_password(row["password_hash"], body.password):
+        limiter.record_failure(body.email, client)
         audit.event("auth.signin", "failure", reason="bad_password", patient_id=row["id"])
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+    limiter.record_success(body.email)
     audit.event("auth.signin", "success", patient_id=row["id"])
     return TokenResponse(access_token=auth.create_session(row["id"]))
 
