@@ -1,0 +1,14 @@
+# Accepted risks for the dev deployment in infra/. Each entry is reviewed before
+# the expiry date; after it, Trivy reports the finding again and CI fails.
+
+# AWS-0053 Public load balancer: intended. The API is the public entry point and
+# the ALB security group only admits the CIDRs in var.allowed_cidrs.
+AWS-0053 exp:2026-12-31
+
+# AWS-0054 HTTP listener: the dev environment has no domain, so no ACM certificate.
+# Production design: HTTPS on 443 with TLS 1.2+ and HTTP redirected (see README architecture).
+AWS-0054 exp:2026-12-31
+
+# AWS-0104 Egress 443 to 0.0.0.0/0 from tasks: needed to reach ECR, CloudWatch Logs and
+# SSM without a NAT gateway. Production design: VPC interface endpoints and no public IPs.
+AWS-0104 exp:2026-12-31

@@ -38,6 +38,11 @@ RUN apt-get update \
  && mkdir /data \
  && chown medibook:medibook /data
 
+# Declared volumes: on ECS Fargate the image's /data (owned by medibook) and /tmp
+# are copied into the task's writable volumes, so the non-root user can write there
+# while the root filesystem stays read-only.
+VOLUME ["/data", "/tmp"]
+
 WORKDIR /srv
 COPY --from=build /opt/venv /opt/venv
 COPY app/ ./app/

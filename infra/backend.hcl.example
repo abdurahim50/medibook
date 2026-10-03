@@ -1,0 +1,7 @@
+# Copy to backend.hcl (git-ignored) and replace ACCOUNT_ID.
+bucket       = "medibook-tfstate-ACCOUNT_ID"
+key          = "medibook/dev/terraform.tfstate"
+region       = "us-east-1"
+profile      = "default"
+encrypt      = true
+use_lockfile = true
