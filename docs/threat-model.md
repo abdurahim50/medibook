@@ -51,7 +51,7 @@ Every request crosses the Internet boundary, so everything in it is untrusted: t
 | TM-07 | Tampering | Two patients book the same slot concurrently | Data store | `UNIQUE(slot_id)` enforced by the database | Mitigated |
 | TM-08 | Information disclosure | Password hash or token leaked in API responses | Route handler | Response models exclude secret fields | Mitigated |
 | TM-09 | Repudiation | No record of who accessed or changed which appointment | Route handler | Structured JSON audit log of sign-in, booking and appointment access, with request ID and client address; cross-patient attempts logged as `denied` | **Mitigated (MB-003)** |
-| TM-10 | Denial of service | Oversized request bodies | Request validation | Field length limits | Partially mitigated |
+| TM-10 | Denial of service | Oversized request bodies or request floods | Request validation, edge | Field length limits; AWS WAF rate limit on sign-in (100 per IP per 5 minutes) and AWS known-bad-inputs rules | Partially mitigated |
 | TM-11 | Elevation of privilege | Vulnerable package in the container image, or a compromised API process taking over the host | Runtime | Non-root user, read-only root filesystem, all Linux capabilities dropped, pip removed from the image, image scanned in CI | Mitigated |
 
 ## Selected threat: TM-01

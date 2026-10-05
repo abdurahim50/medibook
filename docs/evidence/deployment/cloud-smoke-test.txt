@@ -1,0 +1,27 @@
+# Cloud smoke test, AWS dev (ECS Fargate behind ALB + WAF), 2026-10-05
+# Image: medibook/api@sha256:b0b83cca8c14ba30a9a2303ff46212cbe45cbadc2a107b811d3791d17163a52e
+# Demo password read from SSM into a shell variable and unset after use; tokens not shown.
+# Client IP replaced with 198.51.100.23 (documentation range); the real value matched the tester's public IP.
+
+$ curl -s -X POST "$URL/appointments" -H "Authorization: Bearer $ALEX" \
+  -H 'Content-Type: application/json' -d '{"slot_id":1}'; echo
+{"id":1,"slot_id":1,"clinic_name":"Northside Family Clinic","starts_at":"2026-10-06T09:00:00+00:00","status":"booked"}
+$ curl -s -o /dev/null -w "cross-patient read: %{http_code}\n" "$URL/appointments/1" -H "Authorization: Bearer $SAM"
+cross-patient read: 404
+$ for i in 1 2 3 4 5 6; do
+  curl -s -o /dev/null -w "%{http_code} " -X POST "$URL/auth/signin" -H 'Content-Type: application/json' \
+    -d '{"email":"probe@example.com","password":"wrong-password"}'
+done; echo
+401 401 401 401 401 429 
+$ sleep 5
+aws logs tail /medibook/dev/api --since 5m | grep '"type":"audit"' | grep -v health
+2026-10-05T15:52:12.525000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:52:12.525+00:00","type":"audit","event":"auth.signin","outcome":"success","request_id":"394316ec75c6430a88ecc54c273b6c11","client_ip":"198.51.100.23","patient_id":1}
+2026-10-05T15:52:29.625000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:52:29.625+00:00","type":"audit","event":"auth.signin","outcome":"success","request_id":"560fea14827d4d208965815f56b2050e","client_ip":"198.51.100.23","patient_id":2}
+2026-10-05T15:52:49.840000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:52:49.840+00:00","type":"audit","event":"appointment.book","outcome":"success","request_id":"2ec95d8ad8ef47be8b9896eb1e859bd3","client_ip":"198.51.100.23","patient_id":1,"appointment_id":1,"slot_id":1}
+2026-10-05T15:53:24.916000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:24.915+00:00","type":"audit","event":"appointment.read","outcome":"denied","request_id":"09d48fcbea0f42648671d7cb9e7a6709","client_ip":"198.51.100.23","reason":"not_owner","patient_id":2,"appointment_id":1}
+2026-10-05T15:53:44.132000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:44.131+00:00","type":"audit","event":"auth.signin","outcome":"failure","request_id":"f50dafff3ea34eed9c2a35b43390c797","client_ip":"198.51.100.23","reason":"unknown_account"}
+2026-10-05T15:53:44.306000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:44.306+00:00","type":"audit","event":"auth.signin","outcome":"failure","request_id":"33058a1761d545e0a9e69abaeee0d169","client_ip":"198.51.100.23","reason":"unknown_account"}
+2026-10-05T15:53:44.477000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:44.477+00:00","type":"audit","event":"auth.signin","outcome":"failure","request_id":"8498ff5b36f349d7866b05aa9260aa59","client_ip":"198.51.100.23","reason":"unknown_account"}
+2026-10-05T15:53:44.656000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:44.655+00:00","type":"audit","event":"auth.signin","outcome":"failure","request_id":"580938ee38ad42c5a8d3930c330fe4ee","client_ip":"198.51.100.23","reason":"unknown_account"}
+2026-10-05T15:53:44.849000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:44.849+00:00","type":"audit","event":"auth.signin","outcome":"failure","request_id":"aefa0eb4935048598136b629d84dcc7f","client_ip":"198.51.100.23","reason":"unknown_account"}
+2026-10-05T15:53:45.015000+00:00 api/api/4830cf9ecb70429b8ed9d214553f5fd5 {"ts":"2026-10-05T15:53:45.015+00:00","type":"audit","event":"auth.signin","outcome":"denied","request_id":"636687e847a641cf8c82fab9647473df","client_ip":"198.51.100.23","reason":"rate_limited"}

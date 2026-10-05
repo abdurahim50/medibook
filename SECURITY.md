@@ -33,7 +33,8 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 
 ## Limitations
 
-- SQLite is used for local development; a managed database is planned for production.
+- SQLite is used locally and in the AWS dev environment; data on a replaced task is lost. A managed database (RDS PostgreSQL) is planned for production.
 - Sign-in throttling is held in memory per container; the shared control across containers is the edge rate limit. A throttle can be triggered on another patient's account for up to 15 minutes.
-- Audit events are written to standard output; retention and alerting depend on the log platform.
+- Audit events go to CloudWatch Logs (7-day retention in dev). An alarm fires on 5 or more denied requests in 5 minutes.
+- Unfixed operating-system CVEs in the base image are triaged in [docs/vulnerability-exceptions.md](docs/vulnerability-exceptions.md).
 - Email format is checked with a pattern, not verified by confirmation email.
