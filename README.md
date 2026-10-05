@@ -121,6 +121,10 @@ docker logs -f medibook | grep '"type":"audit"'
 
 The container runs as an unprivileged user (UID 10001) and stores the database in the `/data` volume.
 
+## Deploy to AWS
+
+The [`infra/`](infra/) Terraform deploys the API to ECS Fargate behind an Application Load Balancer and AWS WAF, with CloudWatch alarms. See [docs/deployment.md](docs/deployment.md) for cost, setup, deployment and teardown, and [docs/runbook.md](docs/runbook.md) for alarm response.
+
 ## API reference
 
 Protected endpoints require `Authorization: Bearer <access_token>`.
@@ -195,6 +199,7 @@ The workflow has read-only repository permissions, actions are pinned by commit 
 
 ```
 Dockerfile     container image definition
+infra/         Terraform for the AWS dev environment
 .github/workflows/
   ci.yml       tests and security scans
 app/
@@ -214,6 +219,9 @@ docs/
   brief.md         product brief: users, data and assets
   threat-model.md  data flow, STRIDE analysis and controls
   evidence.md      delivery evidence by milestone
+  deployment.md    AWS deployment, cost and teardown
+  runbook.md       alarm response and recovery
+  vulnerability-exceptions.md  accepted findings with review dates
   evidence/        captured test and pipeline output
 diagrams/
   architecture.drawio.png   editable architecture diagram
@@ -225,7 +233,8 @@ SECURITY.md    security controls, known issues, reporting
 - API only; no patient web interface yet.
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
-- Continuous deployment and cloud hosting are planned.
+- The AWS dev environment uses SQLite on task storage: data is lost when a task is replaced. Production design uses RDS PostgreSQL.
+- Continuous deployment from CI (GitHub OIDC) is planned; deployments are currently run with Terraform from a workstation.
 
 ## Security
 
@@ -238,7 +247,10 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] CI pipeline with automated tests and security scanning
 - [x] Hardened container image with image scanning
 - [x] Audit logging and sign-in throttling
-- [ ] AWS deployment
-- [ ] Alerting and recovery runbook
+- [x] AWS deployment with Terraform (ECS Fargate, ALB, WAF)
+- [x] Alerting, recovery runbook and recovery drills
+- [ ] CI build, image signing and deploy through GitHub OIDC
+- [ ] RDS PostgreSQL with backups
+- [ ] Split Terraform into modules when a second environment is added
 - [ ] Clinic staff portal
 - [ ] AI-assisted patient intake

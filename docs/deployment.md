@@ -14,6 +14,7 @@ The `infra/` Terraform deploys the API to AWS for a working session, then remove
 | Data | SQLite on task storage, seeded on start; lost when the task stops | RDS PostgreSQL Multi-AZ |
 | Secrets | Demo password in SSM Parameter Store (SecureString), created outside Terraform | Secrets Manager with rotation |
 | Logs | CloudWatch Logs (API and audit events, VPC flow logs), 7-day retention | Longer retention, KMS encryption |
+| Alerting | Two CloudWatch alarms (denied requests, no healthy target) to an SNS topic encrypted with a customer-managed KMS key | Same, plus 5xx and task-stopped alerts, paging integration |
 | Access | IAM execution role scoped to one repository, one log group and one parameter; no task role | Same |
 
 Accepted risks for this environment are listed with expiry dates in [`.trivyignore`](../.trivyignore).
@@ -28,7 +29,7 @@ Approximate us-east-1 prices while running:
 | Public IPv4 addresses (ALB and task) | ~$0.36 |
 | Fargate task (0.25 vCPU, 0.5 GB) | ~$0.30 |
 | WAF web ACL and rules (prorated) | ~$0.23 |
-| CloudWatch Logs, ECR storage | < $0.05 |
+| CloudWatch Logs, ECR storage, alarms, KMS key (prorated) | < $0.10 |
 | **Total** | **~$1.50** |
 
 Resources are destroyed at the end of every session. The S3 state bucket stays and costs cents. A $10 monthly AWS Budget sends email alerts.
@@ -52,7 +53,7 @@ aws ssm put-parameter --name /medibook/dev/seed-password --type SecureString \
 # Local config files (both are git-ignored)
 cd infra
 sed "s/ACCOUNT_ID/${ACCOUNT_ID}/" backend.hcl.example > backend.hcl
-cp terraform.tfvars.example terraform.tfvars   # then set allowed_cidrs to your IP
+cp terraform.tfvars.example terraform.tfvars   # then set allowed_cidrs (your IP) and alarm_email
 terraform init -backend-config=backend.hcl
 ```
 
@@ -73,8 +74,9 @@ docker push "$REPO:$TAG"
 DIGEST=$(aws ecr describe-images --repository-name medibook/api --image-ids imageTag="$TAG" \
   --query 'imageDetails[0].imageDigest' --output text)
 
-# 3. Deploy the service by digest
-terraform apply -var "image_digest=$DIGEST"
+# 3. Record the digest in terraform.tfvars (image_digest = "sha256:..."), then deploy
+terraform plan -out=service.tfplan
+terraform apply service.tfplan
 
 # 4. Check it
 curl -s "$(terraform output -raw api_url)/health"
@@ -82,11 +84,16 @@ curl -s "$(terraform output -raw api_url)/health"
 
 The demo password, when needed: `aws ssm get-parameter --name /medibook/dev/seed-password --with-decryption --query Parameter.Value --output text`.
 
+After the first apply, confirm the SNS subscription email so alarms are delivered.
+
+**If requests time out:** your public IP has probably changed. Update `allowed_cidrs` in `terraform.tfvars`, then plan and apply.
+
 ## End of session
 
 ```bash
 cd infra
-terraform destroy -var "image_digest=$DIGEST"
+terraform plan -destroy -out=destroy.tfplan
+terraform apply destroy.tfplan
 ```
 
 Then confirm nothing billable remains:
@@ -94,4 +101,7 @@ Then confirm nothing billable remains:
 ```bash
 aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName'
 aws ecs list-clusters
+aws wafv2 list-web-acls --scope REGIONAL --query 'WebACLs[].Name'
 ```
+
+The alert KMS key enters a 7-day pending-deletion period and is not billed during it. The state bucket and the SSM parameter remain for the next session.
