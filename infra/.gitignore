@@ -5,3 +5,4 @@
 terraform.tfvars
 backend.hcl
 crash.log
+plan*.txt

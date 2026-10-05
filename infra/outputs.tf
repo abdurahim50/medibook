@@ -16,3 +16,11 @@ output "log_group" {
 output "ecs_cluster" {
   value = aws_ecs_cluster.main.name
 }
+
+output "alarms" {
+  description = "CloudWatch alarms that notify the alert topic."
+  value = [
+    aws_cloudwatch_metric_alarm.denied.alarm_name,
+    aws_cloudwatch_metric_alarm.no_healthy_targets.alarm_name,
+  ]
+}

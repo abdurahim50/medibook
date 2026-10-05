@@ -72,3 +72,15 @@ variable "log_retention_days" {
   type        = number
   default     = 7
 }
+
+variable "alarm_email" {
+  description = "Email address subscribed to security and availability alarms. Empty creates the topic without a subscription."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.alarm_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alarm_email))
+    error_message = "alarm_email must be a valid email address, or empty."
+  }
+}

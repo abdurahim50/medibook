@@ -43,7 +43,7 @@ resource "aws_ecs_task_definition" "api" {
 
     readonlyRootFilesystem = true
     linuxParameters = {
-      capabilities = { drop = ["ALL"] }
+      capabilities = { add = [], drop = ["ALL"] }
     }
 
     # Seed slots and demo patients on start, then run the API. Proxy headers let
@@ -54,7 +54,12 @@ resource "aws_ecs_task_definition" "api" {
       "python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
     ]
 
-    portMappings = [{ containerPort = 8000, protocol = "tcp" }]
+    # hostPort, systemControls and volumesFrom are the values AWS stores by default.
+    # Declaring them avoids a perpetual diff that would replace the task definition
+    # on every plan.
+    portMappings   = [{ containerPort = 8000, hostPort = 8000, protocol = "tcp" }]
+    systemControls = []
+    volumesFrom    = []
 
     environment = [{ name = "MEDIBOOK_DB", value = "/data/medibook.db" }]
     secrets     = [{ name = "MEDIBOOK_SEED_PASSWORD", valueFrom = local.seed_password_arn }]
