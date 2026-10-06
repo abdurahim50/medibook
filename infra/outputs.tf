@@ -5,7 +5,7 @@ output "api_url" {
 
 output "ecr_repository_url" {
   description = "Push the image here."
-  value       = aws_ecr_repository.api.repository_url
+  value       = data.aws_ecr_repository.api.repository_url
 }
 
 output "log_group" {

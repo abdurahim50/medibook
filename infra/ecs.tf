@@ -37,7 +37,7 @@ resource "aws_ecs_task_definition" "api" {
 
   container_definitions = jsonencode([{
     name      = "api"
-    image     = "${aws_ecr_repository.api.repository_url}@${var.image_digest}"
+    image     = "${data.aws_ecr_repository.api.repository_url}@${var.image_digest}"
     essential = true
     user      = "10001:10001"
 
