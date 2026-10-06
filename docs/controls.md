@@ -11,12 +11,12 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Access Control (AC) | 4 | 0 | 1 |
 | Audit and Accountability (AU) | 4 | 2 | 0 |
 | Configuration Management (CM) | 5 | 0 | 0 |
-| Contingency Planning (CP) | 0 | 1 | 1 |
+| Contingency Planning (CP) | 0 | 2 | 0 |
 | Identification and Authentication (IA) | 2 | 0 | 1 |
 | Incident Response (IR) | 0 | 1 | 0 |
 | Risk Assessment (RA) | 2 | 0 | 0 |
 | System and Services Acquisition (SA) | 3 | 0 | 0 |
-| System and Communications Protection (SC) | 1 | 2 | 1 |
+| System and Communications Protection (SC) | 2 | 2 | 0 |
 | System and Information Integrity (SI) | 4 | 1 | 0 |
 | Supply Chain Risk Management (SR) | 2 | 0 | 0 |
 
@@ -55,8 +55,8 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
-| CP-10 System Recovery and Reconstitution | ECS replaces a failed task automatically (drill: 32 s); deployment circuit breaker rolls back failed releases; whole environment rebuilt from Terraform each session. Data on the task is lost on replacement | [Recovery drills](evidence/deployment/recovery-drills.md) | Partial |
-| CP-9 System Backup | No backups: dev data is synthetic and reseeded. RDS with automated backups and a restore drill planned | [Roadmap](../README.md#roadmap) | Planned |
+| CP-10 System Recovery and Reconstitution | ECS replaces a failed task automatically; deployment circuit breaker rolls back failed releases; whole environment rebuilt from Terraform each session. Data is in RDS, so a replaced task keeps it (drill 3: 74 s, no data lost). Single-AZ database in dev; database restore not yet tested | [Recovery drills](evidence/deployment/recovery-drills.md), [RDS evidence](evidence/deployment/rds-postgresql.md) | Partial |
+| CP-9 System Backup | RDS automated backups with 7-day point-in-time recovery, encrypted with the database KMS key; MB-POL-10 requires at least 7 days. Restore not yet tested; dev backups are deleted with the environment | [`infra/database.tf`](../infra/database.tf), [RDS evidence](evidence/deployment/rds-postgresql.md) | Partial |
 
 ## Identification and Authentication (IA)
 
@@ -92,9 +92,9 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
 | SC-7 Boundary Protection | Load balancer reachable only from allowed addresses; tasks accept traffic only from the load balancer (security group to security group); AWS WAF in front; default security group closed; VPC flow logs. MB-POL-01 blocks internet ingress except web ports | [`infra/network.tf`](../infra/network.tf), [`infra/waf.tf`](../infra/waf.tf), [policy evidence](evidence/policy/terraform-plan-policies.md) | Implemented |
-| SC-28 Protection of Information at Rest | Images encrypted in ECR; seed password in SSM SecureString; alert topic encrypted with a customer-managed KMS key (MB-POL-08). The SQLite file on the task has no application-level encryption; production data moves to encrypted RDS | [`infra/monitoring.tf`](../infra/monitoring.tf), [`infra/bootstrap/main.tf`](../infra/bootstrap/main.tf) | Partial |
+| SC-28 Protection of Information at Rest | Patient data in RDS, storage and backups encrypted with a customer-managed KMS key; database password in Secrets Manager under the same key (MB-POL-10). Images encrypted in ECR; seed password in SSM SecureString; alert topic encrypted with a customer-managed KMS key (MB-POL-08) | [`infra/database.tf`](../infra/database.tf), [`infra/monitoring.tf`](../infra/monitoring.tf), [RDS evidence](evidence/deployment/rds-postgresql.md) | Implemented |
 | SC-5 Denial-of-Service Protection | WAF rate limit on sign-in (100 per IP per 5 minutes), field length limits. Single task, no autoscaling | [`infra/waf.tf`](../infra/waf.tf), threat model TM-10 | Partial |
-| SC-8 Transmission Confidentiality and Integrity | Dev load balancer serves HTTP only, restricted to one address. HTTPS with an ACM certificate and TLS 1.2+ is required before real data | [Deployment guide](deployment.md) | Planned |
+| SC-8 Transmission Confidentiality and Integrity | API to database: TLS required by the server (`rds.force_ssl=1`) and verified by the client (`verify-full`); RDS logs show TLS 1.3 with AES-256-GCM. Client to load balancer: HTTP only in dev, restricted to allowed addresses; HTTPS with an ACM certificate is required before real data | [RDS evidence](evidence/deployment/rds-postgresql.md), [Deployment guide](deployment.md) | Partial |
 
 ## System and Information Integrity (SI)
 
@@ -116,7 +116,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 ## Main gaps before real patient data
 
 1. **SC-8:** HTTPS with an ACM certificate; no plain HTTP listener.
-2. **CP-9 and CP-10:** RDS PostgreSQL (Multi-AZ, encrypted, automated backups) and a tested restore.
+2. **CP-9 and CP-10:** a tested point-in-time restore with measured recovery time and recovery point; Multi-AZ and deletion protection in production.
 3. **SI-7:** deployments outside Terraform (console or API) are not checked; restrict who can register task definitions, or move deployment into CI.
 4. **AU-9 and AU-11:** longer retention and logs in a separate, write-protected account.
 5. **IA-2(1) and AC-2:** MFA and account lifecycle management, including staff roles.
