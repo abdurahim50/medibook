@@ -53,6 +53,6 @@ The same change passed before the fix.
 
 ## Limitations
 
-- **Real plans are checked locally, not in CI.** CI tests the policies against fixtures. Running `terraform plan` in CI needs AWS credentials available to pull request code and read access to state, which contains sensitive values; this is deferred until that trust path can be scoped (a read-only plan role, no state secrets).
+- **(Resolved 2026-10-06: real plans of both stacks are now checked in CI with a read-only role and an empty state.)** Real plans are checked locally, not in CI. CI tests the policies against fixtures. Running `terraform plan` in CI needs AWS credentials available to pull request code and read access to state, which contains sensitive values; this is deferred until that trust path can be scoped (a read-only plan role, no state secrets).
 - **Some values are only known after apply.** When a final IAM policy is unknown, its document's `"Resource": "*"` check runs only if the resources are known. Running the check again on the next plan covers the rest.
 - **The gate depends on the operator running it.** Nothing stops `terraform apply` without the check; enforcement moves to CI with the plan role above.

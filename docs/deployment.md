@@ -75,7 +75,12 @@ terraform apply bootstrap.tfplan
 terraform output -raw release_role_arn
 ```
 
-Set the role ARN as the repository variable `AWS_RELEASE_ROLE_ARN` (GitHub: Settings → Secrets and variables → Actions → Variables). It is an identifier, not a secret.
+Set the role ARNs as repository variables (GitHub: Settings → Secrets and variables → Actions → Variables). They are identifiers, not secrets:
+
+| Variable | Value | Used by |
+| --- | --- | --- |
+| `AWS_RELEASE_ROLE_ARN` | `terraform output -raw release_role_arn` | Release workflow: push, sign and attest images |
+| `AWS_PLAN_ROLE_ARN` | `terraform output -raw plan_role_arn` | CI `Terraform plan` job: read-only, plans both stacks and checks policies |
 
 ## Policy checks
 
@@ -92,6 +97,8 @@ Every saved plan is checked against the policies in [`policy/terraform/`](../pol
 | MB-POL-07 | Application load balancers drop invalid HTTP headers |
 | MB-POL-08 | SNS topics are encrypted with a KMS key |
 | MB-POL-09 | Container images are referenced by digest, and the plan includes image signature verification |
+
+The CI `Terraform plan` job runs the same policies on real plans of both stacks for every pull request. It plans from an empty state, so it judges the whole configuration and never reads the state bucket.
 
 A `WARN` means a value is only known after apply. For example, an IAM policy that references a log group created in the same plan has no final JSON yet; its `aws_iam_policy_document` statements are checked instead, so wildcard actions are still caught. CI unit-tests the policies and confirms a known-bad plan is blocked on every pull request.
 

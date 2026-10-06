@@ -6,3 +6,8 @@ terraform.tfvars
 backend.hcl
 crash.log
 plan*.txt
+
+# Files written by the Terraform plan CI job
+*_override.tf
+plan.json
+plan.log

@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "aws_profile" {
-  description = "Named AWS CLI profile used by Terraform."
+  description = "Named AWS CLI profile used by Terraform. Null uses the default credential chain (environment variables in CI)."
   type        = string
-  default     = "default"
+  default     = null
 }
 
 variable "project" {

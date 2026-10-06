@@ -86,7 +86,7 @@ data "aws_iam_policy_document" "release_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo}@${var.github_repository_id}:ref:refs/heads/${var.release_branch}"]
+      values   = ["${local.github_subject_prefix}:ref:refs/heads/${var.release_branch}"]
     }
   }
 }
@@ -127,4 +127,93 @@ resource "aws_iam_role_policy" "release" {
   name   = "publish-images"
   role   = aws_iam_role.release.id
   policy = data.aws_iam_policy_document.release.json
+}
+
+# ---------- Plan role assumed by GitHub Actions ----------
+# Used by the "Terraform plan" CI job to plan both stacks on every pull request
+# and check the plans against the Conftest policies. The job plans from an empty
+# state, so this role needs no access to the state bucket (which holds sensitive
+# values) and can change nothing: it reads the image repository (for signature
+# verification) and the OIDC provider, and nothing else.
+
+locals {
+  github_subject_prefix = "repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo}@${var.github_repository_id}"
+}
+
+data "aws_iam_policy_document" "plan_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_provider_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    # Pull requests from this repository and pushes to main. Pull requests from
+    # forks receive no OIDC token from GitHub.
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values = [
+        "${local.github_subject_prefix}:pull_request",
+        "${local.github_subject_prefix}:ref:refs/heads/${var.release_branch}",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "plan" {
+  name                 = "${var.project}-github-plan"
+  description          = "Assumed by GitHub Actions to plan Terraform and verify image signatures; read-only"
+  assume_role_policy   = data.aws_iam_policy_document.plan_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "plan" {
+  statement {
+    sid       = "EcrAuth"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"] # this action does not support resource-level permissions
+  }
+
+  statement {
+    sid = "ReadImagesAndSignatures"
+    actions = [
+      "ecr:DescribeRepositories",
+      "ecr:ListTagsForResource",
+      "ecr:DescribeImages",
+      "ecr:ListImages",
+      "ecr:BatchGetImage",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+    ]
+    resources = [aws_ecr_repository.api.arn]
+  }
+
+  statement {
+    sid       = "ListAvailabilityZones"
+    actions   = ["ec2:DescribeAvailabilityZones"]
+    resources = ["*"] # this action does not support resource-level permissions
+  }
+
+  statement {
+    sid       = "FindOidcProvider"
+    actions   = ["iam:ListOpenIDConnectProviders"]
+    resources = ["*"] # list actions do not support resource-level permissions
+  }
+
+  statement {
+    sid       = "ReadOidcProvider"
+    actions   = ["iam:GetOpenIDConnectProvider"]
+    resources = [local.github_oidc_provider_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "plan" {
+  name   = "plan-read-only"
+  role   = aws_iam_role.plan.id
+  policy = data.aws_iam_policy_document.plan.json
 }

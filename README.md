@@ -206,8 +206,9 @@ Every pull request and push to `main` runs [`.github/workflows/ci.yml`](.github/
 | Image scan | Trivy | The Dockerfile has a HIGH or CRITICAL misconfiguration, or the image has a fixable HIGH or CRITICAL vulnerability |
 | Policy tests | Conftest | A policy unit test fails, or the known-bad Terraform plan is not blocked by every rule |
 | DAST | OWASP ZAP | An authenticated API scan of the running container raises an alert not accepted in [`.zap/rules.tsv`](.zap/rules.tsv), or the scan loses its session |
+| Terraform plan | Terraform, Cosign, Conftest | Either stack is unformatted or invalid, the latest release image fails signature verification, or a real plan of either stack violates a policy |
 
-The workflow has read-only repository permissions, actions are pinned by commit SHA, and scanner binaries and images are pinned by checksum or digest. `main` is protected: changes arrive only through pull requests, and all 7 checks plus the DCO sign-off must pass before merge.
+The workflow has read-only repository permissions, actions are pinned by commit SHA, and scanner binaries and images are pinned by checksum or digest. `main` is protected: changes arrive only through pull requests, and all 8 checks plus the DCO sign-off must pass before merge. Only the Terraform plan job receives an AWS identity: a read-only role that can read the image repository and nothing else, with no access to Terraform state.
 
 ### Release
 
@@ -265,7 +266,7 @@ SECURITY.md    security controls, known issues, reporting
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The AWS dev environment uses SQLite on task storage: data is lost when a task is replaced. Production design uses RDS PostgreSQL.
-- CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification is enforced in the Terraform plan; the policy check is still an operator step.
+- CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 
 ## Security
@@ -285,7 +286,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] Policy checks on Terraform plans (Conftest, NIST SP 800-53 mapped)
 - [x] Authenticated DAST (OWASP ZAP) on every pull request
 - [x] Signature verification enforced at deploy time (Terraform plan)
-- [ ] Terraform plan and policy checks in CI with a read-only role
+- [x] Terraform plan and policy checks in CI with a read-only role
 - [ ] RDS PostgreSQL with backups
 - [ ] Split Terraform into modules when a second environment is added
 - [ ] Clinic staff portal
