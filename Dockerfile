@@ -45,6 +45,9 @@ VOLUME ["/tmp"]
 WORKDIR /srv
 COPY --from=build /opt/venv /opt/venv
 COPY app/ ./app/
+# Amazon RDS certificate authorities, for TLS with full verification (PGSSLMODE=verify-full).
+# Source and checksum: certs/README.md.
+COPY certs/rds-global-bundle.pem ./certs/rds-global-bundle.pem
 
 USER 10001:10001
 

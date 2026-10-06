@@ -18,7 +18,7 @@ conftest test --policy policy/terraform policy/fixtures/plan-violations.json  # 
 
 ## Add a rule
 
-1. Give it the next ID (`MB-POL-10`) and start every message with it.
+1. Give it the next ID (`MB-POL-11`) and start every message with it.
 2. Name the NIST SP 800-53 control it supports in the file comment.
 3. Add a test that it blocks a bad value and one that it allows the correct value.
 4. Add a violation to `fixtures/plan-violations.json` and the ID to the list in the CI `Policy tests` job.

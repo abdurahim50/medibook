@@ -42,7 +42,7 @@ warn contains msg if {
 	some rc in resources
 	rc.type == "aws_ecs_task_definition"
 	unknown(rc, "container_definitions")
-	msg := sprintf("MB-POL-04 %s: container definitions known only after apply; not evaluated", [rc.address])
+	msg := sprintf("MB-POL-04 %s: container definitions depend on resources not created yet (for example the database); not evaluated in this plan. Apply the base stack first, then check the service plan, where they are known", [rc.address])
 }
 
 # The image's USER is not visible in the plan, so the task must set it explicitly.

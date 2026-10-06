@@ -50,7 +50,7 @@ The dev deployment is a cost-reduced slice of this design: see [docs/deployment.
 | --- | --- | --- |
 | API | Python 3.14, FastAPI, Uvicorn | HTTP routes, authentication dependency, booking operations |
 | Validation | Pydantic | Request types, field constraints, rejection of unexpected fields |
-| Data store | PostgreSQL 17 (`psycopg` 3, libpq from Debian) | Patients, sessions, slots and appointments; timestamps in UTC |
+| Data store | PostgreSQL 17: Amazon RDS in AWS, a container locally and in CI (`psycopg` 3, libpq from Debian) | Patients, sessions, slots and appointments; timestamps in UTC |
 | Password hashing | argon2id (`argon2-cffi`) | Memory-hard hashing with a per-password salt |
 | Sessions | Opaque bearer tokens | Random 256-bit tokens; only a SHA-256 digest is stored |
 | Tests | pytest, FastAPI TestClient, PostgreSQL | Tables recreated for every test in a dedicated `*_test` database |
@@ -260,7 +260,8 @@ SECURITY.md    security controls, known issues, reporting
 - API only; no patient web interface yet.
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
-- The application runs on PostgreSQL; moving the AWS environment from task storage to RDS PostgreSQL is in progress (see the roadmap). Until then, the AWS environment cannot run the current image.
+- The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
+- The application connects as the database admin user; a separate role limited to reading and writing MediBook's tables is planned.
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 

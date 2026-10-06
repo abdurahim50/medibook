@@ -84,3 +84,34 @@ variable "alarm_email" {
     error_message = "alarm_email must be a valid email address, or empty."
   }
 }
+
+# ---------- Database ----------
+
+variable "db_instance_class" {
+  description = "RDS instance size. db.t3.micro: db.t4g.micro (Graviton) hit InsufficientDBInstanceCapacity in us-east-1."
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_multi_az" {
+  description = "Standby replica in a second Availability Zone with automatic failover. Doubles the database cost; true in production."
+  type        = bool
+  default     = false
+}
+
+variable "db_backup_retention_days" {
+  description = "Days of automated backups and point-in-time recovery."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.db_backup_retention_days >= 7 && var.db_backup_retention_days <= 35
+    error_message = "db_backup_retention_days must be between 7 and 35."
+  }
+}
+
+variable "db_deletion_protection" {
+  description = "Block deletion of the database. False in dev, where the environment is destroyed after each session; true in production."
+  type        = bool
+  default     = false
+}

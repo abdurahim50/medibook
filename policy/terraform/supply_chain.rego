@@ -13,8 +13,11 @@ deny contains msg if {
 	msg := sprintf("MB-POL-09 %s: container %q image %q is not pinned by digest", [rc.address, c.name, c.image])
 }
 
+# Applies to every task definition, including ones whose container definitions
+# are only known after apply: this check does not need their contents.
 deny contains msg if {
-	some rc in task_definitions
+	some rc in resources
+	rc.type == "aws_ecs_task_definition"
 	not signature_verified_in_plan
 	msg := sprintf("MB-POL-09 %s: the plan has no image signature verification (data.external.image_signature)", [rc.address])
 }
