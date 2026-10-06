@@ -33,6 +33,8 @@ coverage.xml
 .env.*
 !.env.example
 *.pem
+# Public RDS CA bundle (not a secret); see certs/README.md
+!certs/rds-global-bundle.pem
 *.key
 secrets/
 
