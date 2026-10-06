@@ -46,6 +46,20 @@ data "aws_iam_policy_document" "execution" {
     actions   = ["ssm:GetParameters"]
     resources = [local.seed_password_arn]
   }
+
+  # The database credentials RDS keeps in Secrets Manager, injected into the
+  # task at start. The application itself has no AWS credentials.
+  statement {
+    sid       = "DatabaseSecret"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_db_instance.main.master_user_secret[0].secret_arn]
+  }
+
+  statement {
+    sid       = "DecryptDatabaseSecret"
+    actions   = ["kms:Decrypt"]
+    resources = [aws_kms_key.db.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "execution" {

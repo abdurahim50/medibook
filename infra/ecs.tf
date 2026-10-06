@@ -44,8 +44,7 @@ resource "aws_ecs_task_definition" "api" {
     cpu_architecture        = "X86_64"
   }
 
-  # Writable scratch space: the root filesystem is read-only.
-  volume { name = "data" }
+  # Writable scratch space: the root filesystem is read-only. Data lives in RDS.
   volume { name = "tmp" }
 
   container_definitions = jsonencode([{
@@ -74,11 +73,22 @@ resource "aws_ecs_task_definition" "api" {
     systemControls = []
     volumesFrom    = []
 
-    environment = [{ name = "MEDIBOOK_DB", value = "/data/medibook.db" }]
-    secrets     = [{ name = "MEDIBOOK_SEED_PASSWORD", valueFrom = local.seed_password_arn }]
+    # Database connection through the standard libpq variables. TLS with full
+    # certificate and hostname verification against the RDS CA bundle in the image.
+    environment = [
+      { name = "PGHOST", value = aws_db_instance.main.address },
+      { name = "PGPORT", value = tostring(aws_db_instance.main.port) },
+      { name = "PGDATABASE", value = aws_db_instance.main.db_name },
+      { name = "PGSSLMODE", value = "verify-full" },
+      { name = "PGSSLROOTCERT", value = "/srv/certs/rds-global-bundle.pem" },
+    ]
+    secrets = [
+      { name = "MEDIBOOK_SEED_PASSWORD", valueFrom = local.seed_password_arn },
+      { name = "PGUSER", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::" },
+      { name = "PGPASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
+    ]
 
     mountPoints = [
-      { sourceVolume = "data", containerPath = "/data", readOnly = false },
       { sourceVolume = "tmp", containerPath = "/tmp", readOnly = false },
     ]
 

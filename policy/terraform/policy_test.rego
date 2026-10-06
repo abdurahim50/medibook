@@ -257,3 +257,52 @@ test_list_oidc_providers_on_star_allowed if {
 test_describe_availability_zones_on_star_allowed if {
 	count(deny) == 0 with input as doc_in_state([{"effect": "Allow", "actions": ["ec2:DescribeAvailabilityZones"], "resources": ["*"], "principals": []}])
 }
+
+# ---------- MB-POL-10 database ----------
+
+good_db := {
+	"storage_encrypted": true,
+	"publicly_accessible": false,
+	"backup_retention_period": 7,
+	"manage_master_user_password": true,
+	"tags_all": tags,
+}
+
+test_compliant_database_allowed if {
+	count(deny) == 0 with input as plan([change("aws_db_instance", good_db)])
+}
+
+test_unencrypted_database_denied if {
+	has_rule(deny, "MB-POL-10") with input as plan([change("aws_db_instance", object.union(good_db, {"storage_encrypted": false}))])
+}
+
+test_public_database_denied if {
+	has_rule(deny, "MB-POL-10") with input as plan([change("aws_db_instance", object.union(good_db, {"publicly_accessible": true}))])
+}
+
+test_short_backup_retention_denied if {
+	has_rule(deny, "MB-POL-10") with input as plan([change("aws_db_instance", object.union(good_db, {"backup_retention_period": 1}))])
+}
+
+test_password_in_terraform_denied if {
+	has_rule(deny, "MB-POL-10") with input as plan([change("aws_db_instance", object.union(good_db, {"manage_master_user_password": null}))])
+}
+
+test_parameter_group_without_forced_tls_denied if {
+	has_rule(deny, "MB-POL-10") with input as plan([change("aws_db_parameter_group", {"family": "postgres17", "parameter": [{"name": "log_connections", "value": "1"}], "tags_all": tags})])
+}
+
+test_parameter_group_with_forced_tls_allowed if {
+	count(deny) == 0 with input as plan([change("aws_db_parameter_group", {"family": "postgres17", "parameter": [{"name": "rds.force_ssl", "value": "1"}], "tags_all": tags})])
+}
+
+test_unknown_container_definitions_still_need_signature_verification if {
+	rcs := [change_with("aws_ecs_task_definition", {"tags_all": tags}, {"container_definitions": true}, ["create"])]
+	has_rule(deny, "MB-POL-09") with input as plan(rcs)
+	count(warn) == 1 with input as plan(rcs)
+}
+
+test_unknown_container_definitions_with_verification_allowed if {
+	rcs := [change_with("aws_ecs_task_definition", {"tags_all": tags}, {"container_definitions": true}, ["create"])]
+	count(deny) == 0 with input as {"resource_changes": rcs, "prior_state": verified_state}
+}
