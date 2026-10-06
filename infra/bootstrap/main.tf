@@ -194,6 +194,12 @@ data "aws_iam_policy_document" "plan" {
   }
 
   statement {
+    sid       = "ListAvailabilityZones"
+    actions   = ["ec2:DescribeAvailabilityZones"]
+    resources = ["*"] # this action does not support resource-level permissions
+  }
+
+  statement {
     sid       = "FindOidcProvider"
     actions   = ["iam:ListOpenIDConnectProviders"]
     resources = ["*"] # list actions do not support resource-level permissions

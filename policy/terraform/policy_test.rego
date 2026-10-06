@@ -253,3 +253,7 @@ test_verification_deferred_to_apply_allowed if {
 test_list_oidc_providers_on_star_allowed if {
 	count(deny) == 0 with input as doc_in_state([{"effect": "Allow", "actions": ["iam:ListOpenIDConnectProviders"], "resources": ["*"], "principals": []}])
 }
+
+test_describe_availability_zones_on_star_allowed if {
+	count(deny) == 0 with input as doc_in_state([{"effect": "Allow", "actions": ["ec2:DescribeAvailabilityZones"], "resources": ["*"], "principals": []}])
+}
