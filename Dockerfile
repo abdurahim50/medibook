@@ -24,24 +24,23 @@ FROM ${PYTHON_IMAGE} AS runtime
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    MEDIBOOK_DB=/data/medibook.db
+    PYTHONUNBUFFERED=1
 
-# Apply Debian security updates, remove the base image's pip (not needed at runtime),
-# then create an unprivileged user with a fixed UID and a writable directory for the database.
+# Apply Debian security updates and install libpq, the PostgreSQL client library
+# used by psycopg (from Debian, so it is patched and scanned with the OS packages).
+# Then remove the base image's pip (not needed at runtime) and create an
+# unprivileged user with a fixed UID.
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
+ && apt-get install -y --no-install-recommends libpq5 \
  && rm -rf /var/lib/apt/lists/* \
  && python -m pip uninstall -y pip \
  && groupadd --system --gid 10001 medibook \
- && useradd --system --uid 10001 --gid medibook --no-create-home --shell /usr/sbin/nologin medibook \
- && mkdir /data \
- && chown medibook:medibook /data
+ && useradd --system --uid 10001 --gid medibook --no-create-home --shell /usr/sbin/nologin medibook
 
-# Declared volumes: on ECS Fargate the image's /data (owned by medibook) and /tmp
-# are copied into the task's writable volumes, so the non-root user can write there
-# while the root filesystem stays read-only.
-VOLUME ["/data", "/tmp"]
+# The root filesystem is read-only at runtime; /tmp is the only writable path.
+# Application data lives in PostgreSQL, not in the container.
+VOLUME ["/tmp"]
 
 WORKDIR /srv
 COPY --from=build /opt/venv /opt/venv

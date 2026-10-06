@@ -42,43 +42,30 @@ def _token_digest(token: str) -> str:
 def create_session(patient_id: int) -> str:
     """Create a session and return the raw token. Only its digest is stored."""
     token = secrets.token_urlsafe(32)
-    expires_at = (_now() + SESSION_TTL).isoformat()
-    conn = get_connection()
-    try:
+    with get_connection() as conn:
         conn.execute(
-            "INSERT INTO sessions (token, patient_id, expires_at) VALUES (?, ?, ?)",
-            (_token_digest(token), patient_id, expires_at),
+            "INSERT INTO sessions (token, patient_id, expires_at) VALUES (%s, %s, %s)",
+            (_token_digest(token), patient_id, _now() + SESSION_TTL),
         )
-        conn.commit()
-    finally:
-        conn.close()
     return token
 
 
 def get_patient_id_for_token(token: str) -> int | None:
     """Return the patient ID for a valid, unexpired token, otherwise None."""
-    conn = get_connection()
-    try:
+    with get_connection() as conn:
         row = conn.execute(
-            "SELECT patient_id, expires_at FROM sessions WHERE token = ?",
+            "SELECT patient_id, expires_at FROM sessions WHERE token = %s",
             (_token_digest(token),),
         ).fetchone()
         if row is None:
             return None
-        if datetime.fromisoformat(row["expires_at"]) <= _now():
-            conn.execute("DELETE FROM sessions WHERE token = ?", (_token_digest(token),))
-            conn.commit()
+        if row["expires_at"] <= _now():
+            conn.execute("DELETE FROM sessions WHERE token = %s", (_token_digest(token),))
             return None
         return row["patient_id"]
-    finally:
-        conn.close()
 
 
 def delete_session(token: str) -> None:
     """Sign out: remove the session so the token stops working immediately."""
-    conn = get_connection()
-    try:
-        conn.execute("DELETE FROM sessions WHERE token = ?", (_token_digest(token),))
-        conn.commit()
-    finally:
-        conn.close()
+    with get_connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE token = %s", (_token_digest(token),))

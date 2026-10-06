@@ -1,32 +1,32 @@
 """API tests for the MediBook booking journey.
 
-Each test runs against a fresh, temporary SQLite database, so tests never
-touch the local development database and never depend on each other.
+Each test starts from empty tables in the PostgreSQL test database (see
+tests/conftest.py), so tests never depend on each other.
 """
+from datetime import datetime, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import get_connection
+from app.db import drop_all, get_connection
 
 PASSWORD = "Test-Only-Passw0rd"  # synthetic, used only inside this test run
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("MEDIBOOK_DB", str(tmp_path / "test.db"))
+def client():
+    drop_all()
     from app.main import app
 
-    with TestClient(app) as test_client:
-        conn = get_connection()
-        conn.executemany(
-            "INSERT INTO slots (clinic_name, starts_at) VALUES (?, ?)",
-            [
-                ("Northside Family Clinic", "2030-01-01T09:00:00+00:00"),
-                ("Northside Family Clinic", "2030-01-01T10:00:00+00:00"),
-            ],
-        )
-        conn.commit()
-        conn.close()
+    with TestClient(app) as test_client:  # startup creates the tables
+        with get_connection() as conn, conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO slots (clinic_name, starts_at) VALUES (%s, %s)",
+                [
+                    ("Northside Family Clinic", datetime(2030, 1, 1, 9, tzinfo=timezone.utc)),
+                    ("Northside Family Clinic", datetime(2030, 1, 1, 10, tzinfo=timezone.utc)),
+                ],
+            )
         yield test_client
 
 
@@ -176,3 +176,50 @@ def test_patient_cannot_read_another_patients_appointment(client):
     # 404, not 403: a 403 would confirm the appointment exists.
     assert response.status_code == 404
     assert response.json() == {"detail": "Appointment not found"}
+
+def test_concurrent_booking_of_one_slot_lets_only_one_win(client):
+    # Two patients' transactions insert the same slot at the same time. The
+    # second waits on the first transaction's lock on the unique index, and
+    # fails with a unique violation as soon as the first commits.
+    import threading
+
+    from psycopg.errors import UniqueViolation
+
+    signup_and_signin(client, "alex@example.com")
+    signup_and_signin(client, "sam@example.com")
+    first, second = get_connection(), get_connection()
+    try:
+        first.execute("INSERT INTO appointments (patient_id, slot_id) VALUES (1, 1)")
+        outcome = {}
+
+        def book_second():
+            try:
+                second.execute("INSERT INTO appointments (patient_id, slot_id) VALUES (2, 1)")
+                second.commit()
+                outcome["second"] = "booked"
+            except UniqueViolation:
+                second.rollback()
+                outcome["second"] = "rejected"
+
+        waiter = threading.Thread(target=book_second)
+        waiter.start()
+        waiter.join(timeout=1)
+        assert waiter.is_alive(), "second insert should wait for the first transaction"
+        first.commit()
+        waiter.join(timeout=5)
+        assert outcome == {"second": "rejected"}
+    finally:
+        first.close()
+        second.close()
+
+    with get_connection() as conn:
+        rows = conn.execute("SELECT patient_id FROM appointments WHERE slot_id = 1").fetchall()
+    assert rows == [{"patient_id": 1}]
+
+
+def test_times_are_returned_in_utc(client):
+    # The database session is pinned to UTC, so the API does not depend on the
+    # database server's time zone.
+    headers = signup_and_signin(client, "alex@example.com")
+    starts_at = client.get("/slots", headers=headers).json()[0]["starts_at"]
+    assert starts_at in ("2030-01-01T09:00:00Z", "2030-01-01T09:00:00+00:00")

@@ -1,4 +1,6 @@
 """Request and response models. Pydantic validates every request before route code runs."""
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 # Reject unknown fields: a client cannot sneak in extra data such as patient_id.
@@ -47,12 +49,12 @@ class PatientResponse(BaseModel):
 class SlotResponse(BaseModel):
     id: int
     clinic_name: str
-    starts_at: str
+    starts_at: datetime
 
 
 class AppointmentResponse(BaseModel):
     id: int
     slot_id: int
     clinic_name: str
-    starts_at: str
+    starts_at: datetime
     status: str

@@ -50,10 +50,10 @@ The dev deployment is a cost-reduced slice of this design: see [docs/deployment.
 | --- | --- | --- |
 | API | Python 3.14, FastAPI, Uvicorn | HTTP routes, authentication dependency, booking operations |
 | Validation | Pydantic | Request types, field constraints, rejection of unexpected fields |
-| Data store | SQLite | Patients, sessions, slots and appointments |
+| Data store | PostgreSQL 17 (`psycopg` 3, libpq from Debian) | Patients, sessions, slots and appointments; timestamps in UTC |
 | Password hashing | argon2id (`argon2-cffi`) | Memory-hard hashing with a per-password salt |
 | Sessions | Opaque bearer tokens | Random 256-bit tokens; only a SHA-256 digest is stored |
-| Tests | pytest, FastAPI TestClient | Isolated database per test |
+| Tests | pytest, FastAPI TestClient, PostgreSQL | Tables recreated for every test in a dedicated `*_test` database |
 | Container | Docker, `python:3.14-slim` pinned by digest | Multi-stage image, non-root user, read-only root filesystem |
 | CI | GitHub Actions | Tests, SAST, dependency, secret and image scans, policy tests and an authenticated OWASP ZAP scan on every pull request |
 | Release | GitHub Actions, GitHub OIDC, Syft, Cosign | Builds and pushes the image to ECR without stored AWS keys; CycloneDX SBOM; keyless signature and SBOM attestation |
@@ -64,7 +64,7 @@ Security controls are mapped to NIST SP 800-53 Rev. 5, with evidence and known g
 
 ## Getting started
 
-**Prerequisites:** Git and Python 3.14 with `venv`. Commands target Ubuntu or Ubuntu on WSL2.
+**Prerequisites:** Git, Docker, Python 3.14 with `venv`, and the PostgreSQL client library (`sudo apt install libpq5`). Commands target Ubuntu or Ubuntu on WSL2.
 
 ```bash
 # Clone the repository
@@ -78,14 +78,25 @@ source .venv/bin/activate
 # Install pinned application and test dependencies
 python -m pip install -r requirements-dev.txt
 
-# Create the database and load demo accounts and slots
+# Start a local PostgreSQL with a development and a test database
+# (same image as CI; see POSTGRES_IMAGE in scripts/dast-scan.sh)
+export PGPASSWORD="$(openssl rand -hex 16)"   # local only; lost when the shell closes
+docker run -d --name medibook-db -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_USER=medibook -e POSTGRES_DB=medibook -e POSTGRES_PASSWORD="$PGPASSWORD" \
+  <postgres image from scripts/dast-scan.sh>
+sleep 3 && docker exec medibook-db createdb -U medibook medibook_test
+
+# Point the app at it (standard libpq variables)
+export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=medibook PGDATABASE=medibook
+
+# Create the tables and load demo accounts and slots
 python -m app.seed
 
 # Start the API on localhost:8000
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The seed command creates two demo patients and ten open slots across two clinics. Unless `MEDIBOOK_SEED_PASSWORD` is set, it generates a shared demo password and prints it once.
+The database is published on `127.0.0.1` only, so it is not reachable from your network. The seed command creates two demo patients and ten open slots across two clinics. Unless `MEDIBOOK_SEED_PASSWORD` is set, it generates a shared demo password and prints it once.
 
 | Demo account |
 | --- |
@@ -101,29 +112,11 @@ curl -sS http://127.0.0.1:8000/health
 
 **Try the API** at <http://127.0.0.1:8000/docs>: call `POST /auth/signin`, copy the `access_token`, then click **Authorize** and paste it to use protected endpoints.
 
-Stop the server with `Ctrl+C`.
+Stop the server with `Ctrl+C`, and the database with `docker stop medibook-db`.
 
 ### Run with Docker
 
-```bash
-# Build the image
-docker build -t medibook:dev .
-
-# Run with a read-only filesystem, no Linux capabilities and a volume for the database
-docker run -d --name medibook -p 8000:8000 \
-  --read-only --tmpfs /tmp \
-  --cap-drop ALL --security-opt no-new-privileges \
-  -v medibook-data:/data \
-  medibook:dev
-
-# Seed demo data inside the container
-docker exec medibook python -m app.seed
-
-# Follow the audit log
-docker logs -f medibook | grep '"type":"audit"'
-```
-
-The container runs as an unprivileged user (UID 10001) and stores the database in the `/data` volume.
+`scripts/dast-scan.sh` shows the full container setup: the API image with a read-only root filesystem, no Linux capabilities and `no-new-privileges`, next to a PostgreSQL container on a private Docker network. The container runs as an unprivileged user (UID 10001) and keeps no data: everything is in PostgreSQL.
 
 ## Deploy to AWS
 
@@ -166,10 +159,11 @@ Protected endpoints require `Authorization: Bearer <access_token>`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MEDIBOOK_DB` | `medibook.db` | Path to the SQLite database file |
+| `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | libpq defaults | PostgreSQL connection ([libpq environment variables](https://www.postgresql.org/docs/current/libpq-envars.html)) |
+| `PGSSLMODE`, `PGSSLROOTCERT` | `prefer` | TLS to the database; `verify-full` with a CA bundle in AWS |
 | `MEDIBOOK_SEED_PASSWORD` | Generated at seed time | Password assigned to the demo accounts |
 
-Set these in your shell before running the seed command or server (for example `export MEDIBOOK_DB=/tmp/medibook.db`). The application does not load `.env` files automatically; `.env.example` lists every supported variable. Never commit a `.env` file.
+Set these in your shell before running the seed command or server. The application does not load `.env` files automatically; `.env.example` lists every supported variable. Never commit a `.env` file or a password.
 
 ### Resetting the development database
 
@@ -179,7 +173,7 @@ Seeding a database that already has slots leaves it unchanged. To rebuild a disp
 python -m app.seed --reset
 ```
 
-This permanently deletes all accounts, sessions and bookings in that database.
+This drops all MediBook tables in the database `PGDATABASE` points at, permanently deleting all accounts, sessions and bookings. Check `echo $PGDATABASE` first.
 
 ## Testing
 
@@ -187,11 +181,11 @@ This permanently deletes all accounts, sessions and bookings in that database.
 # Activate the project's Python environment.
 source .venv/bin/activate
 
-# Run the tests; -q requests concise output.
-python -m pytest -q
+# Run the tests against the test database; -q requests concise output.
+PGDATABASE=medibook_test python -m pytest -q
 ```
 
-Each test runs against its own temporary SQLite database. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking, input validation, cross-patient access control, audit logging, sign-in throttling and security headers.
+Tests use a real PostgreSQL, the same engine as production. Every test drops and recreates the tables, so [`tests/conftest.py`](tests/conftest.py) refuses to run unless `PGDATABASE` ends in `_test`. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking, input validation, cross-patient access control, audit logging, sign-in throttling, security headers, UTC timestamps and double booking under concurrent transactions.
 
 ### Continuous integration
 
@@ -199,7 +193,7 @@ Every pull request and push to `main` runs [`.github/workflows/ci.yml`](.github/
 
 | Check | Tool | Fails when |
 | --- | --- | --- |
-| Tests | pytest | Any test fails |
+| Tests | pytest, PostgreSQL service container | Any test fails |
 | SAST | Bandit, Semgrep (`p/python`, `p/owasp-top-ten`) | Bandit reports a medium or higher severity issue, or Semgrep reports any finding |
 | Dependency scan | pip-audit | A pinned package has a known vulnerability or cannot be checked |
 | Secret scan | gitleaks | A secret is found anywhere in the git history |
@@ -237,7 +231,7 @@ app/
   auth.py      password hashing and session management
   audit.py     structured audit log
   ratelimit.py failed sign-in throttling
-  db.py        database connection and schema
+  db.py        PostgreSQL connection and schema
   models.py    request and response models
   seed.py      demo data loader
   search.py    slot search by clinic
@@ -246,6 +240,7 @@ tests/
   test_audit.py      audit log tests
   test_ratelimit.py  sign-in throttling tests
   test_security_headers.py  response security headers
+  conftest.py        refuses to run against a non-test database
 docs/
   brief.md         product brief: users, data and assets
   threat-model.md  data flow, STRIDE analysis and controls
@@ -265,7 +260,7 @@ SECURITY.md    security controls, known issues, reporting
 - API only; no patient web interface yet.
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
-- The AWS dev environment uses SQLite on task storage: data is lost when a task is replaced. Production design uses RDS PostgreSQL.
+- The application runs on PostgreSQL; moving the AWS environment from task storage to RDS PostgreSQL is in progress (see the roadmap). Until then, the AWS environment cannot run the current image.
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 
