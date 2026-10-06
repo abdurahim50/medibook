@@ -104,7 +104,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | SI-4 System Monitoring | CloudWatch alarms for denied requests and for no healthy targets, notifying an encrypted SNS topic; VPC flow logs | [Runbook](runbook.md), [`infra/monitoring.tf`](../infra/monitoring.tf) | Implemented |
 | SI-10 Information Input Validation | Strict request types, length limits, unknown fields rejected, parameterised queries only; SQL injection fixture blocked by SAST; ZAP injection tests pass | [CI evidence](evidence.md), [DAST evidence](evidence/dast/zap-scan.md) | Implemented |
 | SI-11 Error Handling | Identical `401` for unknown account and wrong password; another patient's record returns `404`, not `403`, so existence is not revealed | [`app/main.py`](../app/main.py), threat model TM-04 | Implemented |
-| SI-7 Software, Firmware, and Information Integrity | Images keyless-signed and attested by the release workflow; immutable ECR tags; deployment by digest; verification rejects other signer identities. Verification is a manual step, not enforced at deploy | [Release evidence](evidence/supply-chain/release-signing.md) | Partial |
+| SI-7 Software, Firmware, and Information Integrity | Images keyless-signed and attested by the release workflow; immutable ECR tags; deployment by digest. Terraform verifies the signature and SBOM attestation during every deployment plan and refuses unsigned images; MB-POL-09 requires digests and the verification step. Changes made directly through the AWS API, outside Terraform, are not checked | [Release evidence](evidence/supply-chain/release-signing.md), [`infra/ecs.tf`](../infra/ecs.tf) | Partial |
 
 ## Supply Chain Risk Management (SR)
 
@@ -117,6 +117,6 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 
 1. **SC-8:** HTTPS with an ACM certificate; no plain HTTP listener.
 2. **CP-9 and CP-10:** RDS PostgreSQL (Multi-AZ, encrypted, automated backups) and a tested restore.
-3. **SI-7:** signature verification enforced at deploy time, not by an operator.
+3. **SI-7:** deployments outside Terraform (console or API) are not checked; restrict who can register task definitions, or move deployment into CI.
 4. **AU-9 and AU-11:** longer retention and logs in a separate, write-protected account.
 5. **IA-2(1) and AC-2:** MFA and account lifecycle management, including staff roles.

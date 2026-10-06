@@ -135,7 +135,7 @@ Infrastructure is split into stacks with different lifecycles:
 | Bootstrap | [`infra/bootstrap/`](infra/bootstrap/) | ECR repository (immutable tags, scan on push) and the role CI uses to publish images |
 | Environment | [`infra/`](infra/) | VPC, Application Load Balancer, AWS WAF, ECS Fargate, CloudWatch alarms; created and destroyed each session |
 
-Images are deployed by digest, only after `scripts/verify-image.sh` confirms they were signed by the release workflow on `main`. Every Terraform plan is checked with `scripts/policy-check.sh` before it is applied. See [docs/deployment.md](docs/deployment.md) for cost, setup, deployment and teardown, and [docs/runbook.md](docs/runbook.md) for alarm response.
+Images are deployed by digest. Terraform verifies each image's signature and SBOM attestation during the plan and refuses images not signed by the release workflow on `main`. Every Terraform plan is checked with `scripts/policy-check.sh` before it is applied. See [docs/deployment.md](docs/deployment.md) for cost, setup, deployment and teardown, and [docs/runbook.md](docs/runbook.md) for alarm response.
 
 ## API reference
 
@@ -227,6 +227,7 @@ policy/
   fixtures/    compliant and non-compliant sample plans
 scripts/
   verify-image.sh  verify an image signature before deploying
+  verify-image-terraform.sh  signature check run by Terraform during plan
   policy-check.sh  check a Terraform plan before applying
   dast-scan.sh     authenticated OWASP ZAP scan
 .zap/rules.tsv     accepted ZAP alerts (none)
@@ -264,7 +265,7 @@ SECURITY.md    security controls, known issues, reporting
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The AWS dev environment uses SQLite on task storage: data is lost when a task is replaced. Production design uses RDS PostgreSQL.
-- CI publishes signed images, but deployment is run with Terraform from a workstation; signature verification and policy checks are operator steps, not yet enforced automatically.
+- CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification is enforced in the Terraform plan; the policy check is still an operator step.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 
 ## Security
@@ -283,7 +284,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] CI build, SBOM and image signing, published through GitHub OIDC
 - [x] Policy checks on Terraform plans (Conftest, NIST SP 800-53 mapped)
 - [x] Authenticated DAST (OWASP ZAP) on every pull request
-- [ ] Signature verification enforced at deploy time
+- [x] Signature verification enforced at deploy time (Terraform plan)
 - [ ] Terraform plan and policy checks in CI with a read-only role
 - [ ] RDS PostgreSQL with backups
 - [ ] Split Terraform into modules when a second environment is added

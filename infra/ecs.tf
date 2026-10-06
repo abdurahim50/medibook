@@ -16,6 +16,19 @@ locals {
   deploy = var.image_digest != ""
 }
 
+# Deploy only images signed by the release workflow on main. The check runs
+# during every plan: if the signature or SBOM attestation does not verify, the
+# script exits non-zero and the plan fails before anything is changed.
+data "external" "image_signature" {
+  count   = local.deploy ? 1 : 0
+  program = ["bash", "${path.module}/../scripts/verify-image-terraform.sh"]
+  query = {
+    digest  = var.image_digest
+    profile = var.aws_profile
+    region  = var.region
+  }
+}
+
 resource "aws_ecs_task_definition" "api" {
   count = local.deploy ? 1 : 0
 
@@ -78,6 +91,13 @@ resource "aws_ecs_task_definition" "api" {
       }
     }
   }])
+
+  lifecycle {
+    precondition {
+      condition     = data.external.image_signature[0].result.verified == "true" && data.external.image_signature[0].result.digest == var.image_digest
+      error_message = "The image signature was not verified for this digest; only images signed by release.yml on main can be deployed."
+    }
+  }
 }
 
 resource "aws_ecs_service" "api" {

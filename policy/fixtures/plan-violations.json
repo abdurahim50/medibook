@@ -84,7 +84,7 @@
         "before": null,
         "after": {
           "family": "medibook-dev-api",
-          "container_definitions": "[{\"name\": \"api\", \"image\": \"x\", \"user\": \"0\", \"readonlyRootFilesystem\": false, \"privileged\": true}]",
+          "container_definitions": "[{\"name\": \"api\", \"image\": \"111122223333.dkr.ecr.us-east-1.amazonaws.com/medibook/api:latest\", \"user\": \"0\", \"readonlyRootFilesystem\": false, \"privileged\": true}]",
           "tags_all": {
             "Project": "medibook",
             "Environment": "dev",
