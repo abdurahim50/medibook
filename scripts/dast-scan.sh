@@ -16,13 +16,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # ZAP 2.17.0, pinned by digest so a re-pushed tag cannot change what runs.
 ZAP_IMAGE="ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef"
 
+# PostgreSQL for the scan, pinned by digest (same image as the CI test service).
+POSTGRES_IMAGE="postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+
 NET=medibook-dast
 API=medibook-dast-api
+DB=medibook-dast-db
 TARGET="http://${API}:8000"
 
 cleanup() {
 	docker logs "$API" > "$OUT/api.log" 2>&1 || true
-	docker rm -f "$API" > /dev/null 2>&1 || true
+	docker rm -f "$API" "$DB" > /dev/null 2>&1 || true
 	docker network rm "$NET" > /dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -31,15 +35,28 @@ mkdir -p "$OUT"
 chmod 777 "$OUT" # ZAP runs as its own non-root user and writes reports here
 cp "$ROOT/.zap/rules.tsv" "$OUT/rules.tsv"
 
-# Synthetic data only: a throwaway password for the seeded demo patients.
-# Secrets are exported and passed with "-e NAME" (no value), so they never
-# appear in a process's command line.
+# Synthetic data only: throwaway passwords for the scan database and the
+# seeded demo patients. Secrets are exported and passed with "-e NAME" (no
+# value), so they never appear in a process's command line.
 export MEDIBOOK_SEED_PASSWORD="$(openssl rand -base64 18)"
+export POSTGRES_PASSWORD="$(openssl rand -hex 16)"
+export PGPASSWORD="$POSTGRES_PASSWORD"
 
 docker network create "$NET" > /dev/null
+docker run -d --name "$DB" --network "$NET" \
+	-e POSTGRES_USER=medibook -e POSTGRES_DB=medibook -e POSTGRES_PASSWORD \
+	"$POSTGRES_IMAGE" > /dev/null
+echo "Waiting for PostgreSQL..."
+for _ in $(seq 1 30); do
+	docker exec "$DB" pg_isready -U medibook -d medibook > /dev/null 2>&1 && break
+	sleep 1
+done
+docker exec "$DB" pg_isready -U medibook -d medibook > /dev/null
+
 docker run -d --name "$API" --network "$NET" \
 	--read-only --cap-drop ALL --security-opt no-new-privileges \
 	-e MEDIBOOK_SEED_PASSWORD \
+	-e PGHOST="$DB" -e PGUSER=medibook -e PGDATABASE=medibook -e PGPASSWORD \
 	"$IMAGE" sh -c "python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000" > /dev/null
 
 echo "Waiting for the API..."
