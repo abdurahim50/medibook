@@ -46,7 +46,35 @@ async def request_context(request: Request, call_next):
         audit.request_id.reset(rid_token)
         audit.client_ip.reset(ip_token)
     response.headers["X-Request-ID"] = rid
+    response.headers.update(security_headers(request.url.path))
     return response
+
+
+# Interactive API docs load Swagger UI scripts and styles from a CDN, so they get
+# a CSP that allows them; every other response is JSON and gets the strictest one.
+DOCS_PATHS = ("/docs", "/redoc")
+DOCS_CSP = (
+    "default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com https://cdn.redoc.ly; "
+    "worker-src blob:; connect-src 'self'; frame-ancestors 'none'"
+)
+
+
+def security_headers(path: str) -> dict:
+    """Response headers for a JSON API that returns patient data (OWASP REST Security)."""
+    docs = path.startswith(DOCS_PATHS)
+    return {
+        # Never let a browser guess the content type of a response.
+        "X-Content-Type-Options": "nosniff",
+        # Responses may contain appointment data: never store them in any cache.
+        "Cache-Control": "no-store",
+        # Other sites cannot embed or read responses.
+        "Content-Security-Policy": DOCS_CSP if docs else "default-src 'none'; frame-ancestors 'none'",
+        "X-Frame-Options": "DENY",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "no-referrer",
+    }
 
 
 # ---------- Dependencies ----------

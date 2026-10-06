@@ -194,3 +194,29 @@ jobs:
             grep -q "^FAIL .* MB-POL-${id} " result.txt || { echo "::error::MB-POL-${id} did not fire"; exit 1; }
           done
           echo "Blocked as expected: every rule fired."
+
+  dast:
+    name: DAST
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build -t medibook:dast .
+
+      # Runs the hardened container, signs in as a synthetic patient and runs an
+      # authenticated OWASP ZAP API scan. Fails on any alert not accepted in .zap/rules.tsv.
+      - name: ZAP API scan
+        run: scripts/dast-scan.sh medibook:dast zap-report
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zap-report
+          path: zap-report/
+          retention-days: 14

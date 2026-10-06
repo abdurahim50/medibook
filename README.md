@@ -54,7 +54,7 @@ The dev deployment is a cost-reduced slice of this design: see [docs/deployment.
 | Sessions | Opaque bearer tokens | Random 256-bit tokens; only a SHA-256 digest is stored |
 | Tests | pytest, FastAPI TestClient | Isolated database per test |
 | Container | Docker, `python:3.14-slim` pinned by digest | Multi-stage image, non-root user, read-only root filesystem |
-| CI | GitHub Actions | Tests, SAST, dependency, secret and image scans on every pull request |
+| CI | GitHub Actions | Tests, SAST, dependency, secret and image scans, policy tests and an authenticated OWASP ZAP scan on every pull request |
 | Release | GitHub Actions, GitHub OIDC, Syft, Cosign | Builds and pushes the image to ECR without stored AWS keys; CycloneDX SBOM; keyless signature and SBOM attestation |
 
 See the [product brief](docs/brief.md) for users, protected data and scope.
@@ -252,6 +252,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] Alerting, recovery runbook and recovery drills
 - [x] CI build, SBOM and image signing, published through GitHub OIDC
 - [x] Policy checks on Terraform plans (Conftest, NIST SP 800-53 mapped)
+- [x] Authenticated DAST (OWASP ZAP) on every pull request
 - [ ] Signature verification enforced at deploy time
 - [ ] Terraform plan and policy checks in CI with a read-only role
 - [ ] RDS PostgreSQL with backups
