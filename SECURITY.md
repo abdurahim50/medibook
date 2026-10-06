@@ -20,7 +20,7 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Secrets | No credentials in the repository; `.env` files are git-ignored |
 | Audit logging | JSON audit events for sign-in, booking and appointment access, containing identifiers only; cross-patient attempts logged as `denied` |
 | Container | Non-root user, read-only root filesystem, capabilities dropped, base image pinned by digest, image scanned in CI |
-| Delivery pipeline | Every change to `main` goes through a pull request that must pass tests, SAST, dependency, secret and image scans, policy tests and an authenticated DAST scan |
+| Delivery pipeline | Every change to `main` goes through a pull request that must pass tests, SAST, dependency, secret and image scans, policy tests, an authenticated DAST scan and a policy-checked Terraform plan of both stacks |
 | HTTP security headers | `nosniff`, `no-store`, restrictive CSP, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin` and `Referrer-Policy: no-referrer` on every response |
 | Infrastructure policy | Every Terraform plan is checked against Conftest policies (network exposure, IAM wildcards, container hardening, encryption, retention, tagging) before apply; the policies are unit-tested in CI |
 | Supply chain | Images are built and published only by the release workflow on `main`, through GitHub OIDC (no stored AWS keys); each image has a CycloneDX SBOM and a keyless Cosign signature and attestation, verified before deploy |

@@ -7,7 +7,8 @@ set -euo pipefail
 
 QUERY="$(cat)"
 DIGEST="$(jq -r '.digest' <<< "$QUERY")"
-export AWS_PROFILE="$(jq -r '.profile' <<< "$QUERY")"
+PROFILE="$(jq -r '.profile' <<< "$QUERY")"
+if [[ -n "$PROFILE" ]]; then export AWS_PROFILE="$PROFILE"; else unset AWS_PROFILE; fi
 export AWS_REGION="$(jq -r '.region' <<< "$QUERY")"
 
 command -v cosign > /dev/null || { echo "cosign is required to deploy (signature verification); see docs/deployment.md" >&2; exit 1; }

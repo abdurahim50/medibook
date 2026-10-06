@@ -24,7 +24,7 @@ data "external" "image_signature" {
   program = ["bash", "${path.module}/../scripts/verify-image-terraform.sh"]
   query = {
     digest  = var.image_digest
-    profile = var.aws_profile
+    profile = var.aws_profile == null ? "" : var.aws_profile
     region  = var.region
   }
 }

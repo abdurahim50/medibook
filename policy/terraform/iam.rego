@@ -8,7 +8,7 @@ package main
 identity_policy_types := {"aws_iam_role_policy", "aws_iam_policy", "aws_iam_user_policy", "aws_iam_group_policy"}
 
 # Actions that AWS does not allow to be scoped to a resource.
-resource_star_allowed := {"ecr:GetAuthorizationToken", "sts:GetCallerIdentity"}
+resource_star_allowed := {"ecr:GetAuthorizationToken", "sts:GetCallerIdentity", "iam:ListOpenIDConnectProviders"}
 
 allow_statements(rc) := [s |
 	doc := json.unmarshal(rc.change.after.policy)

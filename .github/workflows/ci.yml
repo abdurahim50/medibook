@@ -174,6 +174,9 @@ jobs:
           echo "${CONFTEST_SHA256}  conftest.tar.gz" | sha256sum --check --strict
           tar -xzf conftest.tar.gz conftest
 
+      - name: Check policy formatting
+        run: ./conftest fmt --check policy/terraform
+
       - name: Unit-test the policies
         run: ./conftest verify --policy policy/terraform --no-color
 
@@ -220,3 +223,101 @@ jobs:
           name: zap-report
           path: zap-report/
           retention-days: 14
+
+  terraform:
+    name: Terraform plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # The only job with an OIDC token: it assumes a read-only AWS role.
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+      TERRAFORM_VERSION: "1.16.0"
+      # SHA-256 of terraform_<version>_linux_amd64.zip from releases.hashicorp.com
+      TERRAFORM_SHA256: "41d05b927aa174f15d1228c4eba832a323b716c68b415ef5a00179f46cc602d3"
+      COSIGN_VERSION: "3.1.3"
+      COSIGN_SHA256: "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71"
+      CONFTEST_VERSION: "0.71.1"
+      CONFTEST_SHA256: "c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Terraform, Cosign and Conftest
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          echo "${TERRAFORM_SHA256}  terraform.zip" | sha256sum --check --strict
+          unzip -q terraform.zip terraform -d bin
+          curl -sSfL -o bin/cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "${COSIGN_SHA256}  bin/cosign" | sha256sum --check --strict
+          chmod +x bin/cosign
+          curl -sSfL -o conftest.tar.gz "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          echo "${CONFTEST_SHA256}  conftest.tar.gz" | sha256sum --check --strict
+          tar -xzf conftest.tar.gz -C bin conftest
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra
+
+      # Read-only role: can read the image repository and the OIDC provider,
+      # nothing else (see infra/bootstrap). It has no access to Terraform state.
+      - name: Assume AWS plan role
+        env:
+          ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
+        run: |
+          test -n "$ROLE_ARN" || { echo "Repository variable AWS_PLAN_ROLE_ARN is not set"; exit 1; }
+          TOKEN=$(curl -sSf -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
+          echo "::add-mask::${TOKEN}"
+          CREDS=$(aws sts assume-role-with-web-identity --role-arn "$ROLE_ARN" \
+            --role-session-name "github-plan-${GITHUB_RUN_ID}" --web-identity-token "$TOKEN" \
+            --duration-seconds 3600 --query Credentials --output json)
+          for pair in AWS_ACCESS_KEY_ID:AccessKeyId AWS_SECRET_ACCESS_KEY:SecretAccessKey AWS_SESSION_TOKEN:SessionToken; do
+            value=$(echo "$CREDS" | jq -r ".${pair#*:}")
+            echo "::add-mask::${value}"
+            echo "${pair%%:*}=${value}" >> "$GITHUB_ENV"
+          done
+
+      # Plans start from an empty local state: the policies judge the whole
+      # desired configuration, and the state bucket stays out of reach of
+      # pull request code. The override file replaces the S3 backend for CI only.
+      - name: Use an empty local state
+        run: |
+          for dir in infra infra/bootstrap; do
+            printf 'terraform {\n  backend "local" {}\n}\n' > "$dir/ci_backend_override.tf"
+          done
+
+      - name: Plan and check the bootstrap stack
+        working-directory: infra/bootstrap
+        run: |
+          terraform init -input=false -no-color > /dev/null
+          terraform validate -no-color
+          terraform plan -input=false -no-color -lock=false -out=plan.tfplan > plan.log || { cat plan.log; exit 1; }
+          grep -E "^Plan:" plan.log
+          terraform show -json plan.tfplan > plan.json
+          conftest test --no-color --parser json --policy ../../policy/terraform plan.json
+
+      # Plans the full environment with the latest image published by the
+      # release workflow, so the plan also proves that image's signature verifies.
+      - name: Plan and check the environment stack
+        working-directory: infra
+        run: |
+          DIGEST=$(aws ecr describe-images --repository-name medibook/api --filter tagStatus=TAGGED \
+            --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageDigest' --output text)
+          echo "Latest release image: ${DIGEST}"
+          terraform init -input=false -no-color > /dev/null
+          terraform validate -no-color
+          terraform plan -input=false -no-color -lock=false -out=plan.tfplan \
+            -var 'allowed_cidrs=["198.51.100.10/32"]' \
+            -var "alarm_email=alerts@example.com" \
+            -var "image_digest=${DIGEST}" > plan.log 2>&1 || { cat plan.log; exit 1; }
+          grep -E "^Plan:|image_signature" plan.log
+          terraform show -json plan.tfplan > plan.json
+          conftest test --no-color --parser json --policy ../policy/terraform plan.json
+

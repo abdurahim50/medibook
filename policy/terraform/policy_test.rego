@@ -249,3 +249,7 @@ test_verification_deferred_to_apply_allowed if {
 	read := {"address": "data.external.image_signature[0]", "mode": "data", "type": "external", "change": {"actions": ["read"], "after": {}, "after_unknown": {}}}
 	count(deny) == 0 with input as plan([task(pinned), read])
 }
+
+test_list_oidc_providers_on_star_allowed if {
+	count(deny) == 0 with input as doc_in_state([{"effect": "Allow", "actions": ["iam:ListOpenIDConnectProviders"], "resources": ["*"], "principals": []}])
+}
