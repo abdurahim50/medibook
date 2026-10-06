@@ -1,0 +1,4 @@
+# ZAP alert rules for scripts/dast-scan.sh. Tab-separated: rule ID, action, (name).
+# Any alert not listed here fails the scan. Add an IGNORE line only with a
+# justification and a review date, the same way as .trivyignore.
+# Actions: IGNORE (accepted), INFO (report only), WARN, FAIL.

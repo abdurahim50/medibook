@@ -18,3 +18,7 @@ scripts
 *.log
 .vscode
 .idea
+policy
+.zap
+zap-report
+infra

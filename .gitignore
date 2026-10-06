@@ -60,3 +60,6 @@ Thumbs.db
 .arko/
 .claude/
 .mcp.json
+
+# DAST output (scripts/dast-scan.sh)
+zap-report/
