@@ -1,0 +1,243 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.13.3",
+  "resource_changes": [
+    {
+      "address": "aws_vpc_security_group_ingress_rule.alb_http[\"198.51.100.23/32\"]",
+      "mode": "managed",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "name": "23/32\"]",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cidr_ipv4": "198.51.100.23/32",
+          "ip_protocol": "tcp",
+          "from_port": 80,
+          "to_port": 80,
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_vpc_security_group_egress_rule.task_https",
+      "mode": "managed",
+      "type": "aws_vpc_security_group_egress_rule",
+      "name": "task_https",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cidr_ipv4": "0.0.0.0/0",
+          "ip_protocol": "tcp",
+          "from_port": 443,
+          "to_port": 443,
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_ecr_repository.api",
+      "mode": "managed",
+      "type": "aws_ecr_repository",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "medibook/api",
+          "image_tag_mutability": "IMMUTABLE",
+          "image_scanning_configuration": [
+            {
+              "scan_on_push": true
+            }
+          ],
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_iam_role_policy.execution",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "execution",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "execution",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": \"ecr:GetAuthorizationToken\", \"Resource\": \"*\"}, {\"Effect\": \"Allow\", \"Action\": [\"ecr:BatchGetImage\", \"ecr:GetDownloadUrlForLayer\"], \"Resource\": \"arn:aws:ecr:us-east-1:111122223333:repository/medibook/api\"}]}"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_iam_role_policy.flow_logs",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "flow_logs",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "write-flow-logs"
+        },
+        "after_unknown": {
+          "policy": true
+        }
+      }
+    },
+    {
+      "address": "aws_ecs_task_definition.api[0]",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "family": "medibook-dev-api",
+          "container_definitions": "[{\"name\": \"api\", \"image\": \"111122223333.dkr.ecr.us-east-1.amazonaws.com/medibook/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"essential\": true, \"user\": \"10001:10001\", \"readonlyRootFilesystem\": true, \"linuxParameters\": {\"capabilities\": {\"add\": [], \"drop\": [\"ALL\"]}}}]",
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_cloudwatch_log_group.api",
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "/medibook/dev/api",
+          "retention_in_days": 7,
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_lb.api",
+      "mode": "managed",
+      "type": "aws_lb",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "medibook-dev",
+          "load_balancer_type": "application",
+          "drop_invalid_header_fields": true,
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_sns_topic.alerts",
+      "mode": "managed",
+      "type": "aws_sns_topic",
+      "name": "alerts",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "medibook-dev-alerts",
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {
+          "kms_master_key_id": true
+        }
+      }
+    },
+    {
+      "address": "aws_security_group_rule.old",
+      "mode": "managed",
+      "type": "aws_security_group_rule",
+      "name": "old",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": null,
+        "after": null,
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "data.aws_iam_policy_document.x",
+      "mode": "data",
+      "type": "aws_iam_policy_document",
+      "name": "x",
+      "change": {
+        "actions": [
+          "read"
+        ],
+        "before": null,
+        "after": {
+          "json": "{}"
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}

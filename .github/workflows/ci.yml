@@ -153,3 +153,44 @@ jobs:
       # Fails on HIGH or CRITICAL vulnerabilities that have a fix available.
       - name: Scan image for vulnerabilities
         run: ./trivy image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 --no-progress medibook:${{ github.sha }}
+  policy:
+    name: Policy tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CONFTEST_VERSION: "0.71.1"
+      # SHA-256 of conftest_0.71.1_Linux_x86_64.tar.gz from the official release
+      CONFTEST_SHA256: "c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Conftest
+        run: |
+          curl -sSfL -o conftest.tar.gz \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          echo "${CONFTEST_SHA256}  conftest.tar.gz" | sha256sum --check --strict
+          tar -xzf conftest.tar.gz conftest
+
+      - name: Unit-test the policies
+        run: ./conftest verify --policy policy/terraform --no-color
+
+      # The policies themselves are tested here. Real plans are checked before
+      # every apply with scripts/policy-check.sh (see docs/deployment.md).
+      - name: Compliant plan passes
+        run: ./conftest test --policy policy/terraform --no-color policy/fixtures/plan-compliant.json
+
+      - name: Non-compliant plan is blocked
+        run: |
+          if ./conftest test --policy policy/terraform --no-color policy/fixtures/plan-violations.json > result.txt; then
+            echo "::error::policy/fixtures/plan-violations.json passed; the policies failed to block it"
+            exit 1
+          fi
+          cat result.txt
+          # A crash or parse error also exits non-zero, so check that every rule fired.
+          for id in 01 02 03 04 05 06 07 08; do
+            grep -q "^FAIL .* MB-POL-${id} " result.txt || { echo "::error::MB-POL-${id} did not fire"; exit 1; }
+          done
+          echo "Blocked as expected: every rule fired."

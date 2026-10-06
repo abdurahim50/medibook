@@ -70,11 +70,37 @@ terraform init -backend-config=backend.hcl
 cd bootstrap
 terraform init -backend-config=../backend.hcl -backend-config="key=medibook/bootstrap/terraform.tfstate"
 terraform plan -out=bootstrap.tfplan   # requires the GitHub OIDC provider from the aws-account-baseline stack
+../../scripts/policy-check.sh bootstrap.tfplan
 terraform apply bootstrap.tfplan
 terraform output -raw release_role_arn
 ```
 
 Set the role ARN as the repository variable `AWS_RELEASE_ROLE_ARN` (GitHub: Settings → Secrets and variables → Actions → Variables). It is an identifier, not a secret.
+
+## Policy checks
+
+Every saved plan is checked against the policies in [`policy/terraform/`](../policy/terraform/) before it is applied. `scripts/policy-check.sh` converts the plan to JSON (in a temporary file outside the repository, because plan JSON contains sensitive values in plain text) and runs Conftest. Any `FAIL` blocks the apply; fix the Terraform, plan again and re-check.
+
+| Rule | Requirement |
+| --- | --- |
+| MB-POL-01 | No ingress from `0.0.0.0/0` or `::/0` except ports 80 and 443 |
+| MB-POL-02 | ECR repositories use immutable tags and scan on push |
+| MB-POL-03 | Identity policies grant no wildcard actions, no `NotAction`, and no `"Resource": "*"` except for actions AWS cannot scope |
+| MB-POL-04 | Containers run as a non-root user with a read-only root filesystem, all capabilities dropped and no privileged mode |
+| MB-POL-05 | Log groups have a retention period |
+| MB-POL-06 | Every taggable resource has the `Project` tag |
+| MB-POL-07 | Application load balancers drop invalid HTTP headers |
+| MB-POL-08 | SNS topics are encrypted with a KMS key |
+
+A `WARN` means a value is only known after apply. For example, an IAM policy that references a log group created in the same plan has no final JSON yet; its `aws_iam_policy_document` statements are checked instead, so wildcard actions are still caught. CI unit-tests the policies and confirms a known-bad plan is blocked on every pull request.
+
+Install Conftest once (checksum from the [release page](https://github.com/open-policy-agent/conftest/releases/tag/v0.71.1)):
+
+```bash
+curl -sSfLo /tmp/conftest.tgz https://github.com/open-policy-agent/conftest/releases/download/v0.71.1/conftest_0.71.1_Linux_x86_64.tar.gz
+echo "c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985  /tmp/conftest.tgz" | sha256sum --check --strict
+sudo tar -xzf /tmp/conftest.tgz -C /usr/local/bin conftest && rm /tmp/conftest.tgz
+```
 
 ## Deploy a session
 
@@ -82,13 +108,16 @@ Set the role ARN as the repository variable `AWS_RELEASE_ROLE_ARN` (GitHub: Sett
 cd infra
 
 # 1. Base infrastructure (no service yet)
-terraform apply
+terraform plan -out=base.tfplan
+../scripts/policy-check.sh base.tfplan
+terraform apply base.tfplan
 
 # 2. Take the digest from the latest Release workflow run summary on main, and verify it
 ../scripts/verify-image.sh sha256:<digest>
 
 # 3. Record the digest in terraform.tfvars (image_digest = "sha256:..."), then deploy
 terraform plan -out=service.tfplan
+../scripts/policy-check.sh service.tfplan
 terraform apply service.tfplan
 
 # 4. Check it

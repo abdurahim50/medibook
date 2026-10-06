@@ -251,7 +251,9 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] AWS deployment with Terraform (ECS Fargate, ALB, WAF)
 - [x] Alerting, recovery runbook and recovery drills
 - [x] CI build, SBOM and image signing, published through GitHub OIDC
+- [x] Policy checks on Terraform plans (Conftest, NIST SP 800-53 mapped)
 - [ ] Signature verification enforced at deploy time
+- [ ] Terraform plan and policy checks in CI with a read-only role
 - [ ] RDS PostgreSQL with backups
 - [ ] Split Terraform into modules when a second environment is added
 - [ ] Clinic staff portal

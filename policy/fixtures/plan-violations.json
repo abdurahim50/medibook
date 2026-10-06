@@ -1,0 +1,166 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.13.3",
+  "resource_changes": [
+    {
+      "address": "aws_vpc_security_group_ingress_rule.ssh",
+      "mode": "managed",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "name": "ssh",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cidr_ipv4": "0.0.0.0/0",
+          "ip_protocol": "tcp",
+          "from_port": 22,
+          "to_port": 22,
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_ecr_repository.api",
+      "mode": "managed",
+      "type": "aws_ecr_repository",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "medibook/api",
+          "image_tag_mutability": "MUTABLE",
+          "image_scanning_configuration": [
+            {
+              "scan_on_push": false
+            }
+          ],
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_iam_role_policy.admin",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "admin",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "admin",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": {\"Effect\": \"Allow\", \"Action\": \"s3:*\", \"Resource\": \"*\"}}"
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_ecs_task_definition.api[0]",
+      "mode": "managed",
+      "type": "aws_ecs_task_definition",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "family": "medibook-dev-api",
+          "container_definitions": "[{\"name\": \"api\", \"image\": \"x\", \"user\": \"0\", \"readonlyRootFilesystem\": false, \"privileged\": true}]",
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_cloudwatch_log_group.api",
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "/medibook/dev/api",
+          "retention_in_days": 0,
+          "tags_all": {
+            "ManagedBy": "terraform"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_lb.api",
+      "mode": "managed",
+      "type": "aws_lb",
+      "name": "api",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "medibook-dev",
+          "load_balancer_type": "application",
+          "drop_invalid_header_fields": false,
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_sns_topic.alerts",
+      "mode": "managed",
+      "type": "aws_sns_topic",
+      "name": "alerts",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "medibook-dev-alerts",
+          "kms_master_key_id": "",
+          "tags_all": {
+            "Project": "medibook",
+            "Environment": "dev",
+            "ManagedBy": "terraform",
+            "Repository": "github.com/abdurahim50/medibook"
+          }
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}
