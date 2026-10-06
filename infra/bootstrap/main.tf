@@ -22,6 +22,8 @@ data "aws_iam_openid_connect_provider" "github" {
 
 locals {
   github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
+  github_owner             = split("/", var.github_repository)[0]
+  github_repo              = split("/", var.github_repository)[1]
 }
 
 # ---------- Image registry ----------
@@ -77,10 +79,14 @@ data "aws_iam_policy_document" "release_trust" {
     }
     # Only this repository, and only workflows running on the release branch.
     # Pull requests and other branches cannot assume the role.
+    # GitHub puts the immutable owner and repository IDs in the subject
+    # (repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:...). Matching the IDs means a
+    # deleted and re-created repository, or a released username claimed by
+    # someone else, cannot assume this role even though the names match.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/${var.release_branch}"]
+      values   = ["repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo}@${var.github_repository_id}:ref:refs/heads/${var.release_branch}"]
     }
   }
 }
