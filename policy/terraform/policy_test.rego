@@ -116,7 +116,7 @@ task(c) := change("aws_ecs_task_definition", {"container_definitions": json.mars
 hardened := {"name": "api", "user": "10001:10001", "readonlyRootFilesystem": true, "linuxParameters": {"capabilities": {"drop": ["ALL"]}}}
 
 test_hardened_container_allowed if {
-	count(deny) == 0 with input as plan([task(hardened)])
+	count(deny) == 0 with input as {"resource_changes": [task(pinned)], "prior_state": verified_state}
 }
 
 test_missing_user_denied if {
@@ -220,4 +220,32 @@ test_key_policy_document_with_principals_ignored if {
 
 test_document_deny_statement_ignored if {
 	count(deny) == 0 with input as doc_in_state([{"effect": "Deny", "actions": ["*"], "resources": ["*"], "principals": []}])
+}
+
+# ---------- MB-POL-09 supply chain ----------
+
+verified_state := {"values": {"root_module": {"resources": [{
+	"address": "data.external.image_signature[0]",
+	"mode": "data",
+	"type": "external",
+	"values": {"result": {"verified": "true"}},
+}]}}}
+
+pinned := object.union(hardened, {"image": "111122223333.dkr.ecr.us-east-1.amazonaws.com/medibook/api@sha256:aaaa"})
+
+test_verified_pinned_image_allowed if {
+	count(deny) == 0 with input as {"resource_changes": [task(pinned)], "prior_state": verified_state}
+}
+
+test_image_by_tag_denied if {
+	has_rule(deny, "MB-POL-09") with input as {"resource_changes": [task(object.union(pinned, {"image": "medibook/api:latest"}))], "prior_state": verified_state}
+}
+
+test_deploy_without_signature_verification_denied if {
+	has_rule(deny, "MB-POL-09") with input as plan([task(pinned)])
+}
+
+test_verification_deferred_to_apply_allowed if {
+	read := {"address": "data.external.image_signature[0]", "mode": "data", "type": "external", "change": {"actions": ["read"], "after": {}, "after_unknown": {}}}
+	count(deny) == 0 with input as plan([task(pinned), read])
 }

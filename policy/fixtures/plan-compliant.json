@@ -239,5 +239,25 @@
         "after_unknown": {}
       }
     }
-  ]
+  ],
+  "prior_state": {
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "data.external.image_signature[0]",
+            "mode": "data",
+            "type": "external",
+            "name": "image_signature",
+            "values": {
+              "result": {
+                "verified": "true",
+                "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
 }

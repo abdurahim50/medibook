@@ -91,6 +91,7 @@ Every saved plan is checked against the policies in [`policy/terraform/`](../pol
 | MB-POL-06 | Every taggable resource has the `Project` tag |
 | MB-POL-07 | Application load balancers drop invalid HTTP headers |
 | MB-POL-08 | SNS topics are encrypted with a KMS key |
+| MB-POL-09 | Container images are referenced by digest, and the plan includes image signature verification |
 
 A `WARN` means a value is only known after apply. For example, an IAM policy that references a log group created in the same plan has no final JSON yet; its `aws_iam_policy_document` statements are checked instead, so wildcard actions are still caught. CI unit-tests the policies and confirms a known-bad plan is blocked on every pull request.
 
@@ -112,10 +113,11 @@ terraform plan -out=base.tfplan
 ../scripts/policy-check.sh base.tfplan
 terraform apply base.tfplan
 
-# 2. Take the digest from the latest Release workflow run summary on main, and verify it
-../scripts/verify-image.sh sha256:<digest>
+# 2. Take the digest from the latest Release workflow run summary on main and
+#    record it in terraform.tfvars (image_digest = "sha256:...")
 
-# 3. Record the digest in terraform.tfvars (image_digest = "sha256:..."), then deploy
+# 3. Plan: Terraform verifies the image signature and SBOM attestation during the
+#    plan, and the plan fails if they do not verify. Then check policy and apply.
 terraform plan -out=service.tfplan
 ../scripts/policy-check.sh service.tfplan
 terraform apply service.tfplan
@@ -130,11 +132,15 @@ After the first apply, confirm the SNS subscription email so alarms are delivere
 
 **If requests time out:** your public IP has probably changed. Update `allowed_cidrs` in `terraform.tfvars`, then plan and apply.
 
+**Signature verification is part of the plan.** [`infra/ecs.tf`](../infra/ecs.tf) runs [`scripts/verify-image-terraform.sh`](../scripts/verify-image-terraform.sh) as an external data source whenever an image digest is set, and the task definition has a precondition on its result. An image that was not signed by `release.yml` on `main`, or has no SBOM attestation, cannot be deployed through Terraform. Planning a deployment therefore needs `cosign`, `docker` and `jq` on the machine running Terraform. To check a digest on its own: `../scripts/verify-image.sh sha256:<digest>`.
+
 ## End of session
 
 ```bash
 cd infra
-terraform plan -destroy -out=destroy.tfplan
+# image_digest is cleared so the destroy plan does not need to verify an image
+# that may already have expired from ECR.
+terraform plan -destroy -var image_digest= -out=destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
