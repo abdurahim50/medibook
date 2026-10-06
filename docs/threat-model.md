@@ -53,6 +53,7 @@ Every request crosses the Internet boundary, so everything in it is untrusted: t
 | TM-09 | Repudiation | No record of who accessed or changed which appointment | Route handler | Structured JSON audit log of sign-in, booking and appointment access, with request ID and client address; cross-patient attempts logged as `denied` | **Mitigated (MB-003)** |
 | TM-10 | Denial of service | Oversized request bodies or request floods | Request validation, edge | Field length limits; AWS WAF rate limit on sign-in (100 per IP per 5 minutes) and AWS known-bad-inputs rules | Partially mitigated |
 | TM-11 | Elevation of privilege | Vulnerable package in the container image, or a compromised API process taking over the host | Runtime | Non-root user, read-only root filesystem, all Linux capabilities dropped, pip removed from the image, image scanned in CI | Mitigated |
+| TM-12 | Tampering | A modified or substituted image is deployed, or stolen CI credentials are used to push one | Delivery pipeline | Images published only by the release workflow on `main` through short-lived OIDC credentials; role trusts this repository by immutable ID; immutable ECR tags; keyless signature and SBOM attestation verified by signer identity before deploy | Partially mitigated (verification is manual, not enforced at deploy) |
 
 ## Selected threat: TM-01
 

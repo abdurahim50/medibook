@@ -12,3 +12,10 @@ Demonstrated outcomes for each milestone, with links to the commits, pull reques
 | 5 | Deployment and recovery | [Terraform](../infra/), [deployment guide](deployment.md), [runbook](runbook.md), [cloud smoke test](evidence/deployment/cloud-smoke-test.txt), [recovery drills](evidence/deployment/recovery-drills.md), [vulnerability exceptions](vulnerability-exceptions.md) | 2026-10-05 | Deployed to AWS with Terraform: ECS Fargate behind an ALB and WAF, image deployed by digest from ECR, least-privilege execution role and no task role. In the cloud: cross-patient read `404`, sign-in throttling `401` ×5 then `429`, audit events in CloudWatch with the real client IP. ECR scan found 3 unfixed HIGH CVEs; runtime analysis showed libstdc++ is not loaded; accepted with a 30-day review. Drill 1: credential stuffing alarmed in 1 min 51 s and was traced to its source in 2 min 46 s. Drill 2: a stopped task was replaced automatically in 32 s; findings: short outages do not alarm, and SQLite data is lost on replacement (RDS planned). Environment destroyed after the session. |
 | 6 | Architecture overview and walkthrough | Pending | | |
 
+## Additional evidence
+
+Work beyond the six milestones.
+
+| Area | Evidence | Date | Outcome |
+| --- | --- | --- | --- |
+| Signed releases | [Release workflow](../.github/workflows/release.yml), [bootstrap stack](../infra/bootstrap/), [PR #8](https://github.com/abdurahim50/medibook/pull/8), [PR #9](https://github.com/abdurahim50/medibook/pull/9), [evidence](evidence/supply-chain/release-signing.md) | 2026-10-05 | Every merge to `main` builds the image, gates it with Trivy, pushes it to ECR by digest, generates a CycloneDX SBOM, and signs and attests it with Cosign keyless signing. CI reaches AWS through GitHub OIDC; no AWS keys are stored in GitHub, and the role trusts only `main` of this repository by immutable ID. The first release was refused (`AccessDenied`); CloudTrail showed GitHub's subject includes owner and repository IDs, and the trust policy was matched exactly rather than loosened. Local verification accepted the release identity and rejected a different branch identity. |
