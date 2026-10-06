@@ -24,6 +24,7 @@ The current release provides the patient booking API. Staff tools and an AI-assi
 - Strict request validation and consistent HTTP errors
 - Throttling of repeated failed sign-ins
 - Structured JSON audit log of security events
+- Security headers on every response (no caching, no MIME sniffing, no framing, same-origin only)
 - Health endpoint and interactive API documentation at `/docs`
 
 ## Architecture
@@ -126,7 +127,15 @@ The container runs as an unprivileged user (UID 10001) and stores the database i
 
 ## Deploy to AWS
 
-The [`infra/`](infra/) Terraform deploys the API to ECS Fargate behind an Application Load Balancer and AWS WAF, with CloudWatch alarms. See [docs/deployment.md](docs/deployment.md) for cost, setup, deployment and teardown, and [docs/runbook.md](docs/runbook.md) for alarm response.
+Infrastructure is split into stacks with different lifecycles:
+
+| Stack | Path | Contents |
+| --- | --- | --- |
+| Account baseline | separate repository `aws-account-baseline` | GitHub Actions OIDC identity provider, shared by all projects |
+| Bootstrap | [`infra/bootstrap/`](infra/bootstrap/) | ECR repository (immutable tags, scan on push) and the role CI uses to publish images |
+| Environment | [`infra/`](infra/) | VPC, Application Load Balancer, AWS WAF, ECS Fargate, CloudWatch alarms; created and destroyed each session |
+
+Images are deployed by digest, only after `scripts/verify-image.sh` confirms they were signed by the release workflow on `main`. Every Terraform plan is checked with `scripts/policy-check.sh` before it is applied. See [docs/deployment.md](docs/deployment.md) for cost, setup, deployment and teardown, and [docs/runbook.md](docs/runbook.md) for alarm response.
 
 ## API reference
 
@@ -182,7 +191,7 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-Each test runs against its own temporary SQLite database. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking, input validation, cross-patient access control, audit logging and sign-in throttling.
+Each test runs against its own temporary SQLite database. The suite covers registration, authentication, sign-out, booking, patient-specific lists, double booking, input validation, cross-patient access control, audit logging, sign-in throttling and security headers.
 
 ### Continuous integration
 
@@ -195,16 +204,32 @@ Every pull request and push to `main` runs [`.github/workflows/ci.yml`](.github/
 | Dependency scan | pip-audit | A pinned package has a known vulnerability or cannot be checked |
 | Secret scan | gitleaks | A secret is found anywhere in the git history |
 | Image scan | Trivy | The Dockerfile has a HIGH or CRITICAL misconfiguration, or the image has a fixable HIGH or CRITICAL vulnerability |
+| Policy tests | Conftest | A policy unit test fails, or the known-bad Terraform plan is not blocked by every rule |
+| DAST | OWASP ZAP | An authenticated API scan of the running container raises an alert not accepted in [`.zap/rules.tsv`](.zap/rules.tsv), or the scan loses its session |
 
-The workflow has read-only repository permissions, actions are pinned by commit SHA and the gitleaks binary is verified by checksum. `main` is protected: changes arrive only through pull requests, and all checks plus the DCO sign-off must pass before merge.
+The workflow has read-only repository permissions, actions are pinned by commit SHA, and scanner binaries and images are pinned by checksum or digest. `main` is protected: changes arrive only through pull requests, and all 7 checks plus the DCO sign-off must pass before merge.
+
+### Release
+
+Every merge to `main` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): build, Trivy gate, push to ECR by digest through GitHub OIDC (no stored AWS keys), CycloneDX SBOM with Syft, and a keyless Cosign signature and SBOM attestation, which the workflow verifies before finishing. The run summary shows the digest to deploy.
 
 ## Project structure
 
 ```
 Dockerfile     container image definition
 infra/         Terraform for the AWS dev environment
+  bootstrap/   ECR repository and CI release role (long-lived)
 .github/workflows/
-  ci.yml       tests and security scans
+  ci.yml       tests and security scans on every pull request
+  release.yml  build, sign and publish the image on main
+policy/
+  terraform/   Conftest policies and their unit tests
+  fixtures/    compliant and non-compliant sample plans
+scripts/
+  verify-image.sh  verify an image signature before deploying
+  policy-check.sh  check a Terraform plan before applying
+  dast-scan.sh     authenticated OWASP ZAP scan
+.zap/rules.tsv     accepted ZAP alerts (none)
 app/
   main.py      API routes and session dependency
   auth.py      password hashing and session management
@@ -218,9 +243,11 @@ tests/
   test_api.py        API test suite
   test_audit.py      audit log tests
   test_ratelimit.py  sign-in throttling tests
+  test_security_headers.py  response security headers
 docs/
   brief.md         product brief: users, data and assets
   threat-model.md  data flow, STRIDE analysis and controls
+  controls.md      NIST SP 800-53 control mapping, evidence and gaps
   evidence.md      delivery evidence by milestone
   deployment.md    AWS deployment, cost and teardown
   runbook.md       alarm response and recovery
@@ -237,7 +264,8 @@ SECURITY.md    security controls, known issues, reporting
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The AWS dev environment uses SQLite on task storage: data is lost when a task is replaced. Production design uses RDS PostgreSQL.
-- Continuous deployment from CI (GitHub OIDC) is planned; deployments are currently run with Terraform from a workstation.
+- CI publishes signed images, but deployment is run with Terraform from a workstation; signature verification and policy checks are operator steps, not yet enforced automatically.
+- The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 
 ## Security
 
