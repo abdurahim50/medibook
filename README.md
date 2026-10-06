@@ -59,6 +59,8 @@ The dev deployment is a cost-reduced slice of this design: see [docs/deployment.
 
 See the [product brief](docs/brief.md) for users, protected data and scope.
 
+Security controls are mapped to NIST SP 800-53 Rev. 5, with evidence and known gaps, in [docs/controls.md](docs/controls.md).
+
 ## Getting started
 
 **Prerequisites:** Git and Python 3.14 with `venv`. Commands target Ubuntu or Ubuntu on WSL2.

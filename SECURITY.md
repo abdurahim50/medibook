@@ -26,6 +26,8 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Supply chain | Images are built and published only by the release workflow on `main`, through GitHub OIDC (no stored AWS keys); each image has a CycloneDX SBOM and a keyless Cosign signature and attestation, verified before deploy |
 | Data minimisation | No symptoms, diagnoses, date of birth, insurance or payment data collected |
 
+Each control is mapped to NIST SP 800-53 with its evidence in [docs/controls.md](docs/controls.md).
+
 ## Known issues
 
 | ID | Severity | Summary | Status |
