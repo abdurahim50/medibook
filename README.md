@@ -262,6 +262,7 @@ SECURITY.md    security controls, known issues, reporting
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
 - The application connects as the database admin user; a separate role limited to reading and writing MediBook's tables is planned.
+- Each request opens a new database connection, and `/health` checks the database; connection pooling and separate liveness and readiness checks are planned (findings F-5 and F-6 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 
@@ -283,7 +284,8 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] Authenticated DAST (OWASP ZAP) on every pull request
 - [x] Signature verification enforced at deploy time (Terraform plan)
 - [x] Terraform plan and policy checks in CI with a read-only role
-- [ ] RDS PostgreSQL with backups
+- [x] RDS PostgreSQL: private, KMS-encrypted, verified TLS, point-in-time recovery
+- [ ] Tested point-in-time restore with measured RTO and RPO
 - [ ] Split Terraform into modules when a second environment is added
 - [ ] Clinic staff portal
 - [ ] AI-assisted patient intake
