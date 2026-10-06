@@ -10,7 +10,7 @@ The `infra/` Terraform deploys the API to AWS for a working session, then remove
 | Edge protection | AWS WAF: sign-in rate limit per IP, AWS known-bad-inputs rules | Same, plus core rule set |
 | Compute | ECS Fargate, 1 task (0.25 vCPU, 0.5 GB), read-only root filesystem, non-root, no capabilities | 2+ tasks across 2 AZs, autoscaling |
 | Network | VPC with 2 public subnets, no NAT gateway; task accepts traffic from the ALB only | Private subnets, VPC endpoints, no public IPs on tasks |
-| Image | ECR, immutable tags, scan on push, deployed by digest | Same, plus image signing |
+| Image | Built by the release workflow on `main`, scanned, pushed to ECR (immutable tags, scan on push), keyless-signed with Cosign and attested with a CycloneDX SBOM; deployed by digest after signature verification | Same, plus signature verification enforced at deploy by policy |
 | Data | SQLite on task storage, seeded on start; lost when the task stops | RDS PostgreSQL Multi-AZ |
 | Secrets | Demo password in SSM Parameter Store (SecureString), created outside Terraform | Secrets Manager with rotation |
 | Logs | CloudWatch Logs (API and audit events, VPC flow logs), 7-day retention | Longer retention, KMS encryption |
@@ -34,6 +34,16 @@ Approximate us-east-1 prices while running:
 
 Resources are destroyed at the end of every session. The S3 state bucket stays and costs cents. A $10 monthly AWS Budget sends email alerts.
 
+## Stacks
+
+| Stack | Path | Lifecycle | Contents |
+| --- | --- | --- | --- |
+| Account baseline | separate repository `aws-account-baseline` | Created once, shared by all projects | GitHub OIDC provider |
+| Bootstrap | `infra/bootstrap/` | Created once, kept | ECR repository, release role used by CI |
+| Environment | `infra/` | Created and destroyed each session | Network, load balancer, WAF, ECS, alarms |
+
+They are separate root configurations with separate state because their lifecycles differ: CI must be able to publish images while the environment is destroyed.
+
 ## One-time setup
 
 ```bash
@@ -55,24 +65,27 @@ cd infra
 sed "s/ACCOUNT_ID/${ACCOUNT_ID}/" backend.hcl.example > backend.hcl
 cp terraform.tfvars.example terraform.tfvars   # then set allowed_cidrs (your IP) and alarm_email
 terraform init -backend-config=backend.hcl
+
+# Bootstrap stack: same bucket, its own state key
+cd bootstrap
+terraform init -backend-config=../backend.hcl -backend-config="key=medibook/bootstrap/terraform.tfstate"
+terraform plan -out=bootstrap.tfplan   # requires the GitHub OIDC provider from the aws-account-baseline stack
+terraform apply bootstrap.tfplan
+terraform output -raw release_role_arn
 ```
+
+Set the role ARN as the repository variable `AWS_RELEASE_ROLE_ARN` (GitHub: Settings → Secrets and variables → Actions → Variables). It is an identifier, not a secret.
 
 ## Deploy a session
 
 ```bash
 cd infra
 
-# 1. Base infrastructure and the ECR repository (no service yet)
+# 1. Base infrastructure (no service yet)
 terraform apply
 
-# 2. Build and push the image
-REPO=$(terraform output -raw ecr_repository_url)
-TAG=$(git rev-parse --short HEAD)
-aws ecr get-login-password | docker login --username AWS --password-stdin "${REPO%%/*}"
-docker build -t "$REPO:$TAG" ..
-docker push "$REPO:$TAG"
-DIGEST=$(aws ecr describe-images --repository-name medibook/api --image-ids imageTag="$TAG" \
-  --query 'imageDetails[0].imageDigest' --output text)
+# 2. Take the digest from the latest Release workflow run summary on main, and verify it
+../scripts/verify-image.sh sha256:<digest>
 
 # 3. Record the digest in terraform.tfvars (image_digest = "sha256:..."), then deploy
 terraform plan -out=service.tfplan
