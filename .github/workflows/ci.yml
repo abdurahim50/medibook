@@ -30,7 +30,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U medibook -d medibook_test"
+          --health-cmd "pg_isready -h 127.0.0.1 -U medibook -d medibook_test"
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       PGHOST: localhost

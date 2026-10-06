@@ -48,10 +48,10 @@ docker run -d --name "$DB" --network "$NET" \
 	"$POSTGRES_IMAGE" > /dev/null
 echo "Waiting for PostgreSQL..."
 for _ in $(seq 1 30); do
-	docker exec "$DB" pg_isready -U medibook -d medibook > /dev/null 2>&1 && break
+	docker exec "$DB" pg_isready -h 127.0.0.1 -U medibook -d medibook > /dev/null 2>&1 && break
 	sleep 1
 done
-docker exec "$DB" pg_isready -U medibook -d medibook > /dev/null
+docker exec "$DB" pg_isready -h 127.0.0.1 -U medibook -d medibook > /dev/null
 
 docker run -d --name "$API" --network "$NET" \
 	--read-only --cap-drop ALL --security-opt no-new-privileges \
