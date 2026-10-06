@@ -41,7 +41,7 @@ Target production architecture on AWS. Edit `diagrams/architecture.drawio.png` i
 | Delivery | GitHub Actions runs tests and security scans, signs the image, pushes to ECR through OIDC (no long-lived AWS keys) and deploys by image digest |
 | Operations | CloudWatch logs, metrics and alarms; CloudTrail and GuardDuty for audit and threat detection |
 
-The current release runs locally with SQLite. Containerisation and AWS deployment are on the [roadmap](#roadmap).
+The dev deployment is a cost-reduced slice of this design: see [docs/deployment.md](docs/deployment.md). Remaining gaps are on the [roadmap](#roadmap).
 
 ### Application stack
 
@@ -54,7 +54,8 @@ The current release runs locally with SQLite. Containerisation and AWS deploymen
 | Sessions | Opaque bearer tokens | Random 256-bit tokens; only a SHA-256 digest is stored |
 | Tests | pytest, FastAPI TestClient | Isolated database per test |
 | Container | Docker, `python:3.14-slim` pinned by digest | Multi-stage image, non-root user, read-only root filesystem |
-| CI | GitHub Actions | Tests, SAST, dependency and secret scans on every pull request |
+| CI | GitHub Actions | Tests, SAST, dependency, secret and image scans on every pull request |
+| Release | GitHub Actions, GitHub OIDC, Syft, Cosign | Builds and pushes the image to ECR without stored AWS keys; CycloneDX SBOM; keyless signature and SBOM attestation |
 
 See the [product brief](docs/brief.md) for users, protected data and scope.
 
@@ -249,7 +250,8 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] Audit logging and sign-in throttling
 - [x] AWS deployment with Terraform (ECS Fargate, ALB, WAF)
 - [x] Alerting, recovery runbook and recovery drills
-- [ ] CI build, image signing and deploy through GitHub OIDC
+- [x] CI build, SBOM and image signing, published through GitHub OIDC
+- [ ] Signature verification enforced at deploy time
 - [ ] RDS PostgreSQL with backups
 - [ ] Split Terraform into modules when a second environment is added
 - [ ] Clinic staff portal

@@ -21,6 +21,7 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Audit logging | JSON audit events for sign-in, booking and appointment access, containing identifiers only; cross-patient attempts logged as `denied` |
 | Container | Non-root user, read-only root filesystem, capabilities dropped, base image pinned by digest, image scanned in CI |
 | Delivery pipeline | Every change to `main` goes through a pull request that must pass tests, SAST, dependency and secret scans |
+| Supply chain | Images are built and published only by the release workflow on `main`, through GitHub OIDC (no stored AWS keys); each image has a CycloneDX SBOM and a keyless Cosign signature and attestation, verified before deploy |
 | Data minimisation | No symptoms, diagnoses, date of birth, insurance or payment data collected |
 
 ## Known issues
