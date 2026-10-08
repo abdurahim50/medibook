@@ -8,10 +8,10 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 
 | Family | Implemented | Partial | Planned |
 | --- | --- | --- | --- |
-| Access Control (AC) | 4 | 0 | 1 |
+| Access Control (AC) | 3 | 1 | 1 |
 | Audit and Accountability (AU) | 4 | 2 | 0 |
 | Configuration Management (CM) | 5 | 0 | 0 |
-| Contingency Planning (CP) | 0 | 2 | 0 |
+| Contingency Planning (CP) | 2 | 1 | 0 |
 | Identification and Authentication (IA) | 2 | 0 | 1 |
 | Incident Response (IR) | 0 | 1 | 0 |
 | Risk Assessment (RA) | 2 | 0 | 0 |
@@ -25,7 +25,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
 | AC-3 Access Enforcement | Every appointment query is scoped to the patient in the session; other patients' records return `404` (MB-001 fixed) | [Threat model TM-01](threat-model.md), [before](evidence/access-control/before-fix.txt) and [after](evidence/access-control/after-fix.txt) tests, cloud smoke test | Implemented |
-| AC-6 Least Privilege | ECS execution role limited to one repository, one log group and one parameter; no task role, so application code holds no AWS credentials. CI release role limited to one ECR repository. Containers run as UID 10001 with all capabilities dropped. Policy MB-POL-03 blocks wildcard IAM | [`infra/iam.tf`](../infra/iam.tf), [`infra/bootstrap/main.tf`](../infra/bootstrap/main.tf), [policy evidence](evidence/policy/terraform-plan-policies.md) | Implemented |
+| AC-6 Least Privilege | ECS execution role limited to one repository, one log group and one parameter; no task role, so application code holds no AWS credentials. CI release role limited to one ECR repository. Containers run as UID 10001 with all capabilities dropped. Policy MB-POL-03 blocks wildcard IAM. Gap (drill 4, F-8): the application connects as the database admin, and anyone allowed to run ECS tasks can run any command with those credentials | [`infra/iam.tf`](../infra/iam.tf), [`infra/bootstrap/main.tf`](../infra/bootstrap/main.tf), [policy evidence](evidence/policy/terraform-plan-policies.md), [recovery drills](evidence/deployment/recovery-drills.md) | Partial |
 | AC-7 Unsuccessful Logon Attempts | Failed sign-ins throttled per account (5) and per client (20) per 15 minutes; `429` with `Retry-After`; edge rate limit in AWS WAF (MB-002) | [`app/ratelimit.py`](../app/ratelimit.py), [`tests/test_ratelimit.py`](../tests/test_ratelimit.py), cloud smoke test (`401` ×5 then `429`) | Implemented |
 | AC-12 Session Termination | Sessions expire after 8 hours and are revoked on sign-out | [`app/auth.py`](../app/auth.py), [`tests/test_api.py`](../tests/test_api.py) | Implemented |
 | AC-2 Account Management | Patients self-register. No account disabling, review or staff roles yet | [Product brief](brief.md) | Planned |
@@ -55,8 +55,9 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
-| CP-10 System Recovery and Reconstitution | ECS replaces a failed task automatically; deployment circuit breaker rolls back failed releases; whole environment rebuilt from Terraform each session. Data is in RDS, so a replaced task keeps it (drill 3: 74 s, no data lost). Single-AZ database in dev; database restore not yet tested | [Recovery drills](evidence/deployment/recovery-drills.md), [RDS evidence](evidence/deployment/rds-postgresql.md) | Partial |
-| CP-9 System Backup | RDS automated backups with 7-day point-in-time recovery, encrypted with the database KMS key; MB-POL-10 requires at least 7 days. Restore not yet tested; dev backups are deleted with the environment | [`infra/database.tf`](../infra/database.tf), [RDS evidence](evidence/deployment/rds-postgresql.md) | Partial |
+| CP-10 System Recovery and Reconstitution | ECS replaces a failed task automatically (drill 3: 74 s, no data lost); deployment circuit breaker rolls back failed releases; whole environment rebuilt from Terraform each session. Database restored from point-in-time backups in drill 4. Gaps: single-AZ database in dev, and the database cutover is manual and outside Terraform (F-10) | [Recovery drills](evidence/deployment/recovery-drills.md), [runbook](runbook.md#incident-data-deleted-or-corrupted-point-in-time-restore) | Partial |
+| CP-9 System Backup | RDS automated backups with 7-day point-in-time recovery, encrypted with the database KMS key; MB-POL-10 requires at least 7 days. Restore tested in drill 4: data wiped by an operator error was restored to 21 seconds before the wipe, RTO 23 min 50 s, no data lost. Dev backups are deleted with the environment | [`infra/database.tf`](../infra/database.tf), [recovery drills](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore) | Implemented |
+| CP-4 Contingency Plan Testing | Four recovery drills with measured timelines and recorded findings: credential stuffing, two task crashes and a database restore. Each finding has an owner action | [Recovery drills](evidence/deployment/recovery-drills.md) | Implemented |
 
 ## Identification and Authentication (IA)
 
@@ -116,7 +117,8 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 ## Main gaps before real patient data
 
 1. **SC-8:** HTTPS with an ACM certificate; no plain HTTP listener.
-2. **CP-9 and CP-10:** a tested point-in-time restore with measured recovery time and recovery point; Multi-AZ and deletion protection in production.
+2. **CP-10:** Multi-AZ, deletion protection and a database cutover through Terraform instead of manual renames (F-10).
 3. **SI-7:** deployments outside Terraform (console or API) are not checked; restrict who can register task definitions, or move deployment into CI.
 4. **AU-9 and AU-11:** longer retention and logs in a separate, write-protected account.
 5. **IA-2(1) and AC-2:** MFA and account lifecycle management, including staff roles.
+6. **AC-6 and SI-4:** an application database role without DDL rights, `ecs:RunTask` command overrides restricted to a break-glass role, and alerts on destructive SQL (F-7, F-8).

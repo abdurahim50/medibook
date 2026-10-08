@@ -261,7 +261,8 @@ SECURITY.md    security controls, known issues, reporting
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
-- The application connects as the database admin user; a separate role limited to reading and writing MediBook's tables is planned.
+- The application connects as the database admin user, and anyone allowed to run ECS tasks can run commands with those credentials; a role limited to reading and writing MediBook's tables, and restricted one-off tasks, are planned (finding F-8).
+- Deleting data raises no alarm, and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
 - Each request opens a new database connection, and `/health` checks the database; connection pooling and separate liveness and readiness checks are planned (findings F-5 and F-6 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
@@ -285,7 +286,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - [x] Signature verification enforced at deploy time (Terraform plan)
 - [x] Terraform plan and policy checks in CI with a read-only role
 - [x] RDS PostgreSQL: private, KMS-encrypted, verified TLS, point-in-time recovery
-- [ ] Tested point-in-time restore with measured RTO and RPO
+- [x] Tested point-in-time restore with measured RTO and RPO (23 min 50 s, no data lost)
 - [ ] Split Terraform into modules when a second environment is added
 - [ ] Clinic staff portal
 - [ ] AI-assisted patient intake

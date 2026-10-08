@@ -110,3 +110,67 @@ filter type = "audit" and outcome = "denied"
 ### 3. Record
 
 Note the time window, sources, accounts affected and actions taken in `docs/evidence/`.
+
+---
+
+## Incident: data deleted or corrupted (point-in-time restore)
+
+No alarm covers this yet (finding F-7): it is reported by users or noticed in the data. Rehearsed in [drill 4](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore): 23 min 50 s to recover, no data lost.
+
+### 1. Contain and choose the restore time
+
+Stop whatever is changing the data (stop the one-off task, revert the release). Find the last good moment from the application or audit logs and pick a restore time just before the damage. Check that the backups cover it:
+
+```bash
+aws rds describe-db-instances --db-instance-identifier medibook-dev \
+  --query 'DBInstances[0].LatestRestorableTime' --output text
+RESTORE_TIME=2026-01-01T00:00:00Z   # just before the damage, UTC
+```
+
+### 2. Restore to a new instance
+
+The damaged database is not touched; the restore creates a copy with the same network, TLS settings and KMS key.
+
+```bash
+DB_SG=$(aws rds describe-db-instances --db-instance-identifier medibook-dev \
+  --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' --output text)
+aws rds restore-db-instance-to-point-in-time \
+  --source-db-instance-identifier medibook-dev --target-db-instance-identifier medibook-dev-restored \
+  --restore-time "$RESTORE_TIME" --db-instance-class db.t3.micro --storage-type gp3 \
+  --db-subnet-group-name medibook-dev --vpc-security-group-ids "$DB_SG" \
+  --db-parameter-group-name medibook-dev-postgres17 \
+  --no-publicly-accessible --no-multi-az --enable-cloudwatch-logs-exports postgresql
+aws rds wait db-instance-available --db-instance-identifier medibook-dev-restored
+```
+
+### 3. Cut over
+
+The endpoint is derived from the instance name, so giving the restored copy the production name repoints the application without a deployment. `aws rds wait` fails at once on a name that does not exist yet (finding F-9), so poll instead:
+
+```bash
+st() { aws rds describe-db-instances --db-instance-identifier "$1" --query 'DBInstances[0].DBInstanceStatus' --output text 2>/dev/null; }
+aws rds modify-db-instance --db-instance-identifier medibook-dev \
+  --new-db-instance-identifier medibook-dev-damaged --apply-immediately
+until [ "$(st medibook-dev-damaged)" = available ]; do sleep 15; done
+aws rds modify-db-instance --db-instance-identifier medibook-dev-restored \
+  --new-db-instance-identifier medibook-dev --apply-immediately
+until [ "$(st medibook-dev)" = available ]; do sleep 15; done
+```
+
+The API has no database between the two renames, and ECS may replace tasks as unhealthy (finding F-6).
+
+### 4. Verify, then reconcile Terraform before any apply
+
+Sign in as an affected patient and check the records are back. Then **do not run `terraform apply`**: the state still points at the damaged instance, and a plan will try to rename it back (finding F-10). In dev, delete the restored copy first, then destroy as usual. In a long-lived environment, move state to the restored instance and review the plan before applying:
+
+```bash
+terraform state rm aws_db_instance.main
+terraform import aws_db_instance.main medibook-dev
+terraform plan   # review: the restored copy has no RDS-managed password until this is applied
+```
+
+Keep `medibook-dev-damaged` until the investigation is finished, then delete it.
+
+### 5. Record
+
+Record the timeline, restore time, RTO and RPO in `docs/evidence/`.
