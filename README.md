@@ -42,7 +42,7 @@ Target production architecture on AWS. Edit `diagrams/architecture.drawio.png` i
 | Delivery | GitHub Actions runs tests and security scans, signs the image, pushes to ECR through OIDC (no long-lived AWS keys) and deploys by image digest |
 | Operations | CloudWatch logs, metrics and alarms; CloudTrail and GuardDuty for audit and threat detection |
 
-The dev deployment is a cost-reduced slice of this design: see [docs/deployment.md](docs/deployment.md). Remaining gaps are on the [roadmap](#roadmap).
+The dev deployment is a cost-reduced slice of this design: see [docs/deployment.md](docs/deployment.md). A hop-by-hop walkthrough of the delivery and request paths is in [docs/architecture.md](docs/architecture.md). Remaining gaps are on the [roadmap](#roadmap).
 
 ### Application stack
 
