@@ -89,14 +89,15 @@ sleep 3 && docker exec medibook-db createdb -U medibook medibook_test
 # Point the app at it (standard libpq variables)
 export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=medibook PGDATABASE=medibook
 
-# Create the tables and load demo accounts and slots
+# Choose a demo password, then create the tables and load demo accounts and slots
+export MEDIBOOK_SEED_PASSWORD="$(openssl rand -base64 18)"
 python -m app.seed
 
 # Start the API on localhost:8000
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The database is published on `127.0.0.1` only, so it is not reachable from your network. The seed command creates two demo patients and ten open slots across two clinics. Unless `MEDIBOOK_SEED_PASSWORD` is set, it generates a shared demo password and prints it once.
+The database is published on `127.0.0.1` only, so it is not reachable from your network. The seed command creates two demo patients and ten open slots across two clinics. The demo accounts share the password in `MEDIBOOK_SEED_PASSWORD`; the seed command refuses to run without it and never prints it.
 
 | Demo account |
 | --- |
@@ -161,7 +162,7 @@ Protected endpoints require `Authorization: Bearer <access_token>`.
 | --- | --- | --- |
 | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | libpq defaults | PostgreSQL connection ([libpq environment variables](https://www.postgresql.org/docs/current/libpq-envars.html)) |
 | `PGSSLMODE`, `PGSSLROOTCERT` | `prefer` | TLS to the database; `verify-full` with a CA bundle in AWS |
-| `MEDIBOOK_SEED_PASSWORD` | Generated at seed time | Password assigned to the demo accounts |
+| `MEDIBOOK_SEED_PASSWORD` | None (required by the seed command) | Password assigned to the demo accounts |
 
 Set these in your shell before running the seed command or server. The application does not load `.env` files automatically; `.env.example` lists every supported variable. Never commit a `.env` file or a password.
 

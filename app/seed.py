@@ -7,12 +7,11 @@ Usage:
 The database is chosen by the standard PG* environment variables.
 
 All data is fictional. Emails use the reserved example.com domain.
-The demo password is read from MEDIBOOK_SEED_PASSWORD, or generated at random
-and printed once. No password is stored in the repository.
+The demo password is read from MEDIBOOK_SEED_PASSWORD, which must be set. It is
+never printed or logged, and no password is stored in the repository.
 """
 import argparse
 import os
-import secrets
 from datetime import datetime, timedelta, timezone
 
 from app import auth
@@ -41,8 +40,13 @@ def _future_slot_times() -> list[datetime]:
 
 
 def seed() -> None:
+    password = os.environ.get("MEDIBOOK_SEED_PASSWORD")
+    if not password:
+        raise SystemExit(
+            "MEDIBOOK_SEED_PASSWORD is not set. Choose a demo password first, for example:\n"
+            '  export MEDIBOOK_SEED_PASSWORD="$(openssl rand -base64 18)"'
+        )
     init_db()
-    password = os.environ.get("MEDIBOOK_SEED_PASSWORD") or secrets.token_urlsafe(12)
     with get_connection() as conn:
         if conn.execute("SELECT COUNT(*) AS n FROM slots").fetchone()["n"] > 0:
             print("Database already seeded. Use --reset to start again.")
@@ -63,8 +67,6 @@ def seed() -> None:
     print(f"Seeded {len(CLINICS) * SLOTS_PER_CLINIC} slots and {len(DEMO_PATIENTS)} demo patients.")
     for _, email in DEMO_PATIENTS:
         print(f"  {email}")
-    if not os.environ.get("MEDIBOOK_SEED_PASSWORD"):
-        print(f"Demo password (local training use only, shown once): {password}")
 
 
 def main() -> None:
