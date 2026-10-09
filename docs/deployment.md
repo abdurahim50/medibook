@@ -41,7 +41,7 @@ Resources are destroyed at the end of every session. The S3 state bucket stays a
 | --- | --- | --- | --- |
 | Account baseline | separate repository `aws-account-baseline` | Created once, shared by all projects | GitHub OIDC provider |
 | Bootstrap | `infra/bootstrap/` | Created once, kept | ECR repository, release role used by CI |
-| Environment | `infra/` | Created and destroyed each session | Network, load balancer, WAF, ECS, alarms |
+| Environment | `infra/` | Created and destroyed each session | Network, load balancer, WAF, ECS (API service and migration task), RDS, alarms |
 
 They are separate root configurations with separate state because their lifecycles differ: CI must be able to publish images while the environment is destroyed.
 

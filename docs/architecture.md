@@ -49,6 +49,7 @@ The application checks every request's session and scopes every appointment quer
 | API tasks | Public subnets, inbound only from the load balancer | Private subnets with VPC endpoints |
 | Database | Single-AZ, deleted with the environment | Multi-AZ, deletion protection, final snapshot |
 | Deploys | `terraform apply` from a workstation, signature verified in the plan | Deploys from CI only |
+| Migrations | One-off ECS task run by the operator after each deploy | Run from CI; `ecs:RunTask` on the migration task limited to a break-glass role |
 | Logs | 7-day retention in the same account | Longer retention in a separate, write-protected account |
 
 Open gaps and their status are in [docs/controls.md](controls.md); the evidence for each claim on this page is indexed in [docs/evidence.md](evidence.md).
