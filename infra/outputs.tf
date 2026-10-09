@@ -22,6 +22,7 @@ output "alarms" {
   value = [
     aws_cloudwatch_metric_alarm.denied.alarm_name,
     aws_cloudwatch_metric_alarm.no_healthy_targets.alarm_name,
+    aws_cloudwatch_metric_alarm.destructive_sql.alarm_name,
   ]
 }
 
@@ -31,6 +32,16 @@ output "db_endpoint" {
 }
 
 output "db_secret_arn" {
-  description = "Secrets Manager secret holding the database credentials (managed by RDS)."
+  description = "Secrets Manager secret holding the admin database credentials (managed by RDS; migration task only)."
   value       = aws_db_instance.main.master_user_secret[0].secret_arn
+}
+
+output "migrate_network" {
+  description = "Network configuration for running the migration task (aws ecs run-task --network-configuration)."
+  value       = "awsvpcConfiguration={subnets=[${join(",", aws_subnet.public[*].id)}],securityGroups=[${aws_security_group.task.id}],assignPublicIp=ENABLED}"
+}
+
+output "migrate_task_definition" {
+  description = "Task definition family of the one-off migration task."
+  value       = local.deploy ? aws_ecs_task_definition.migrate[0].family : null
 }

@@ -8,7 +8,11 @@
 #     (manage_master_user_password), so it never appears in Terraform code,
 #     variables or state. ECS injects it into the task at start.
 #   - Automated backups with point-in-time recovery; TLS required for every
-#     connection; connections and slow queries logged to CloudWatch.
+#     connection; connections, slow queries and schema changes (DDL) logged to
+#     CloudWatch.
+#   - Two database roles (finding F-8): the admin above owns the schema and is
+#     used only by the one-off migration task; the API signs in as medibook_app
+#     (row access only) with a 15-minute IAM token, so it has no password at all.
 
 # ---------- Private subnets for the database ----------
 
@@ -98,7 +102,7 @@ resource "aws_kms_alias" "db" {
 resource "aws_db_parameter_group" "main" {
   name        = "${local.name}-postgres17"
   family      = "postgres17"
-  description = "MediBook: TLS required, connections and slow statements logged"
+  description = "MediBook: TLS required; connections, slow statements and DDL logged"
 
   parameter {
     name         = "rds.force_ssl"
@@ -112,6 +116,12 @@ resource "aws_db_parameter_group" "main" {
   parameter {
     name  = "log_disconnections"
     value = "1"
+  }
+  # Schema changes (CREATE, ALTER, DROP) are logged without parameters, so no
+  # patient data reaches the log; the destructive-SQL alarm reads them (F-7).
+  parameter {
+    name  = "log_statement"
+    value = "ddl"
   }
   parameter {
     name  = "log_min_duration_statement"
@@ -142,6 +152,9 @@ resource "aws_db_instance" "main" {
   # the key above. Terraform never knows it.
   manage_master_user_password   = true
   master_user_secret_kms_key_id = aws_kms_key.db.key_id
+
+  # The API's role signs in with IAM tokens (rds-db:connect), not a password.
+  iam_database_authentication_enabled = true
 
   allocated_storage = 20
   storage_type      = "gp3"
