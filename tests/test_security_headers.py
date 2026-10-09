@@ -10,6 +10,12 @@ EXPECTED = {
 }
 
 
+def csp_directives(policy):
+    """Parse a Content-Security-Policy into {directive: [sources]}."""
+    parts = (d.split() for d in policy.split(";"))
+    return {p[0]: p[1:] for p in parts if p}
+
+
 def assert_headers(response):
     for name, value in EXPECTED.items():
         assert response.headers.get(name) == value, name
@@ -37,7 +43,7 @@ def test_error_responses_have_security_headers(client):
 def test_api_docs_get_a_csp_that_allows_swagger_ui(client):
     response = client.get("/docs")
     assert response.status_code == 200
-    csp = response.headers["content-security-policy"]
-    assert "https://cdn.jsdelivr.net" in csp
-    assert "frame-ancestors 'none'" in csp
+    directives = csp_directives(response.headers["content-security-policy"])
+    assert set(directives["script-src"]) == {"'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"}
+    assert directives["frame-ancestors"] == ["'none'"]
     assert_headers(response)
