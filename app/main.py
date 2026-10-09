@@ -1,9 +1,12 @@
 """MediBook API routes."""
+import logging
 from contextlib import asynccontextmanager
 
+import psycopg
 from psycopg.errors import UniqueViolation
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import audit, auth
@@ -29,6 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="MediBook", version="0.1.0", lifespan=lifespan)
 bearer = HTTPBearer(auto_error=False)
+logger = logging.getLogger("medibook.api")
 
 
 @app.middleware("http")
@@ -97,10 +101,29 @@ def current_patient_id(
 
 # ---------- Health ----------
 
+# Liveness and readiness are separate (finding F-6). The load balancer and the
+# container HEALTHCHECK use liveness, so a database outage does not make ECS
+# replace API tasks that are not at fault.
+
 @app.get("/health")
 def health() -> dict:
-    with get_connection() as conn:
-        conn.execute("SELECT 1")
+    """Liveness: the process is up and serving requests. Never touches the database."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness: the API can reach the database. 503 without details when it cannot."""
+    try:
+        with get_connection() as conn:
+            conn.execute("SELECT 1")
+    except psycopg.Error as exc:
+        # Log the error class only: connection errors can include host names.
+        logger.warning("readiness check failed: %s", type(exc).__name__)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unavailable"},
+        )
     return {"status": "ok"}
 
 

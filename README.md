@@ -109,6 +109,8 @@ The database is published on `127.0.0.1` only, so it is not reachable from your 
 ```bash
 curl -sS http://127.0.0.1:8000/health
 # {"status":"ok"}
+curl -sS http://127.0.0.1:8000/ready
+# {"status":"ok"}  (503 {"status":"unavailable"} if the database is unreachable)
 ```
 
 **Try the API** at <http://127.0.0.1:8000/docs>: call `POST /auth/signin`, copy the `access_token`, then click **Authorize** and paste it to use protected endpoints.
@@ -137,7 +139,8 @@ Protected endpoints require `Authorization: Bearer <access_token>`.
 
 | Method | Path | Description | Auth | Success |
 | --- | --- | --- | --- | --- |
-| `GET` | `/health` | API and database connectivity | None | `200` |
+| `GET` | `/health` | Liveness: the API process is up (no database check); used by the load balancer | None | `200` |
+| `GET` | `/ready` | Readiness: the API can reach the database | None | `200`, or `503` |
 | `POST` | `/auth/signup` | Register a patient | None | `201` |
 | `POST` | `/auth/signin` | Sign in and receive a session token | None | `200` |
 | `POST` | `/auth/signout` | Revoke the current session | Required | `204` |
@@ -264,7 +267,7 @@ SECURITY.md    security controls, known issues, reporting
 - The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
 - The application connects as the database admin user, and anyone allowed to run ECS tasks can run commands with those credentials; a role limited to reading and writing MediBook's tables, and restricted one-off tasks, are planned (finding F-8).
 - Deleting data raises no alarm, and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
-- Each request opens a new database connection, and `/health` checks the database; connection pooling and separate liveness and readiness checks are planned (findings F-5 and F-6 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
+- Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 

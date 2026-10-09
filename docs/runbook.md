@@ -22,11 +22,12 @@ TG=$(aws elbv2 describe-target-groups --names medibook-dev-api --query 'TargetGr
 
 ```bash
 curl -sS -m 10 -o /dev/null -w "%{http_code}\n" "$(terraform output -raw api_url)/health"
+curl -sS -m 10 -o /dev/null -w "%{http_code}\n" "$(terraform output -raw api_url)/ready"
 aws elbv2 describe-target-health --target-group-arn "$TG" \
   --query 'TargetHealthDescriptions[].{ip:Target.Id,state:TargetHealth.State,reason:TargetHealth.Reason}'
 ```
 
-`503` and no healthy target confirm an outage.
+`503` and no healthy target confirm an outage. `/health` `200` with `/ready` `503` means the API is up but cannot reach the database.
 
 ### 2. Find the cause
 
@@ -49,7 +50,8 @@ aws logs tail $LOG_GROUP --since 15m
 | `CannotPullContainerError` | Image digest missing from ECR, or execution role cannot pull | Check `image_digest` in `terraform.tfvars` exists in ECR; check `iam.tf` |
 | `ResourceInitializationError` mentioning SSM | Seed password parameter missing or not readable | `aws ssm get-parameter --name /medibook/dev/seed-password` |
 | Exit code 1, Python traceback in logs | Application error on start-up | Roll back to the previous digest (step 3) |
-| Health check failures, task running | App up but `/health` failing (database path, permissions) | Check logs for `/data` errors |
+| Health check failures, task running | App process hung or not listening on its port (`/health` does not check the database) | Check logs for the last request served; roll back if a new image caused it |
+| `/health` `200` but `/ready` `503` | API cannot reach the database (RDS down, security group, TLS, credentials) | Check RDS status and API logs for `readiness check failed`; see the data incident below |
 | Task stopped by user or scaling | Manual action | Restore `desired_count` |
 
 ### 3. Recover
@@ -157,7 +159,7 @@ aws rds modify-db-instance --db-instance-identifier medibook-dev-restored \
 until [ "$(st medibook-dev)" = available ]; do sleep 15; done
 ```
 
-The API has no database between the two renames, and ECS may replace tasks as unhealthy (finding F-6).
+The API has no database between the two renames: `/ready` returns `503` and requests that need data fail, but `/health` stays `200`, so ECS keeps the tasks (finding F-6, fixed).
 
 ### 4. Verify, then reconcile Terraform before any apply
 

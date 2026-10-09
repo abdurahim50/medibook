@@ -5,6 +5,7 @@ tests/conftest.py), so tests never depend on each other.
 """
 from datetime import datetime, timezone
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -48,6 +49,32 @@ def test_health_returns_ok(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_health_does_not_use_the_database(client, monkeypatch):
+    """Liveness must stay up during a database outage (finding F-6)."""
+    def no_database():
+        raise AssertionError("/health must not open a database connection")
+
+    monkeypatch.setattr("app.main.get_connection", no_database)
+    assert client.get("/health").status_code == 200
+
+
+def test_ready_returns_ok_when_database_is_reachable(client):
+    response = client.get("/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_ready_returns_503_without_details_when_database_is_down(client, monkeypatch):
+    def database_down():
+        raise psycopg.OperationalError("connection to server at db.internal failed")
+
+    monkeypatch.setattr("app.main.get_connection", database_down)
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
+    assert "db.internal" not in response.text
 
 
 # ---------- Authentication ----------
