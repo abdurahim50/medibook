@@ -106,3 +106,18 @@ def test_truncate_by_owner_raises_destructive_sql_warning(app_role_db):
         conn.add_notice_handler(lambda d: notices.append(d.message_primary))
         conn.execute("TRUNCATE appointments")
     assert any(m.startswith("DESTRUCTIVE_SQL: TRUNCATE on appointments") for m in notices)
+
+
+@pytest.mark.parametrize("statement", [
+    "DROP TABLE appointments CASCADE",
+    "DrOp TaBlE appointments CASCADE",
+    "drop\n   table\tappointments cascade",
+    'DROP TABLE "appointments" CASCADE',
+])
+def test_any_spelling_of_drop_raises_destructive_sql_warning(app_role_db, statement):
+    """The log filter is case-sensitive; the event trigger's marker is not (MB-007)."""
+    notices = []
+    with get_connection() as conn:
+        conn.add_notice_handler(lambda d: notices.append(d.message_primary))
+        conn.execute(statement)
+    assert any(m.startswith("DESTRUCTIVE_SQL: DROP table public.appointments") for m in notices)

@@ -37,6 +37,7 @@ def test_connection_uses_iam_token_as_password_when_enabled(monkeypatch):
     db.get_connection()
 
     assert captured["password"] == "signed-token"
+    assert captured["connect_timeout"] == 10  # first IAM sign-in can take ~8 s (F-11)
 
 
 def test_connection_leaves_password_to_libpq_when_disabled(monkeypatch):
@@ -47,3 +48,4 @@ def test_connection_leaves_password_to_libpq_when_disabled(monkeypatch):
     db.get_connection()
 
     assert "password" not in captured
+    assert captured["connect_timeout"] == 5

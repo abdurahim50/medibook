@@ -2,6 +2,7 @@
 #   1. Security: denied requests in the audit log (cross-patient reads, sign-in throttling).
 #   2. Availability: no healthy API task behind the load balancer.
 #   3. Data: destructive SQL (DROP, TRUNCATE) in the database log (finding F-7).
+#   4. Data: the API cannot reach the database (finding F-12).
 
 # ---------- Alert topic (encrypted with a customer-managed key) ----------
 # CloudWatch cannot publish to a topic encrypted with the AWS-managed SNS key,
@@ -136,15 +137,18 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
 }
 
 # ---------- Data signal: destructive SQL in the database log ----------
-# log_statement = ddl logs every DROP; a trigger on each table raises a
-# DESTRUCTIVE_SQL warning on TRUNCATE (app/db.py). Denied attempts by the API's
-# role are logged with their statement too, so they also match. Patterns are
-# case-sensitive, hence both spellings.
+# Matches on markers PostgreSQL writes the same way however the SQL was spelled
+# (MB-007: patterns are case-sensitive, SQL is not):
+#   - DESTRUCTIVE_SQL: warnings from an event trigger on every dropped table or
+#     schema, and from a trigger on every TRUNCATE (app/db.py);
+#   - "must be owner of", "permission denied for": attempts the database refused,
+#     such as the API's role trying to drop or alter a table.
+# The statement phrases stay as a fallback if the event trigger is missing.
 
 resource "aws_cloudwatch_log_metric_filter" "destructive_sql" {
   name           = "${local.name}-db-destructive-sql"
   log_group_name = aws_cloudwatch_log_group.db.name
-  pattern        = "?\"DROP TABLE\" ?\"drop table\" ?\"DROP SCHEMA\" ?\"drop schema\" ?\"DROP DATABASE\" ?\"drop database\" ?DESTRUCTIVE_SQL"
+  pattern        = "?DESTRUCTIVE_SQL ?\"must be owner of\" ?\"permission denied for\" ?\"DROP TABLE\" ?\"drop table\" ?\"DROP DATABASE\" ?\"drop database\""
 
   metric_transformation {
     name          = "DestructiveSql"
@@ -163,6 +167,44 @@ resource "aws_cloudwatch_metric_alarm" "destructive_sql" {
   period              = 60
   evaluation_periods  = 1
   threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+}
+
+# ---------- Data signal: the API cannot reach the database ----------
+# /health no longer checks the database (F-6), so a database outage leaves the
+# load balancer healthy and the no-healthy-targets alarm silent (F-12). The API
+# logs every failed readiness check, and an unhandled database error writes a
+# psycopg.OperationalError traceback, so either one counts here.
+# Limit: it needs traffic or someone calling /ready; production adds a
+# synthetic check (CloudWatch Synthetics or Route 53) that calls /ready.
+
+resource "aws_cloudwatch_log_metric_filter" "database_unreachable" {
+  name           = "${local.name}-api-database-unreachable"
+  log_group_name = aws_cloudwatch_log_group.api.name
+  pattern        = "?\"readiness check failed\" ?\"psycopg.OperationalError\" ?\"psycopg.errors.ConnectionTimeout\""
+
+  metric_transformation {
+    name          = "DatabaseUnreachable"
+    namespace     = "MediBook/${var.environment}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_unreachable" {
+  alarm_name          = "${local.name}-api-database-unreachable"
+  alarm_description   = "The API cannot reach the database (readiness failures or connection errors). Patients cannot sign in or book. See docs/runbook.md."
+  namespace           = "MediBook/${var.environment}"
+  metric_name         = "DatabaseUnreachable"
+  statistic           = "Sum"
+  period              = 60
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+  threshold           = 3
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
 

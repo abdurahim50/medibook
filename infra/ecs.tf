@@ -72,11 +72,14 @@ resource "aws_ecs_task_definition" "api" {
 
     # Run the API only. Schema and seed data come from the migration task below,
     # which holds the admin credentials (F-8). Proxy headers let the audit log and
-    # rate limiter see the real client address behind the ALB; only the ALB can
-    # reach the task, so trusting forwarded headers is safe here.
+    # rate limiter see the real client address behind the ALB. Only the ALB's
+    # subnets are trusted (MB-004): the ALB appends the client address to
+    # X-Forwarded-For, so Uvicorn reads the list from the right and stops at the
+    # first address outside these ranges. With "*" it took the leftmost entry,
+    # which the client controls.
     command = [
       "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
-      "--proxy-headers", "--forwarded-allow-ips=*"
+      "--proxy-headers", "--forwarded-allow-ips=${join(",", aws_subnet.public[*].cidr_block)}"
     ]
 
     # hostPort, systemControls and volumesFrom are the values AWS stores by default.

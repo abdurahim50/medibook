@@ -1,0 +1,40 @@
+# Version updates: one grouped pull request per ecosystem per week, so pinned
+# versions and digests stay current without a flood of PRs. Security updates
+# are enabled separately in the repository settings and are not delayed by this.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: terraform
+    directories: [/infra, /infra/bootstrap]
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      terraform:
+        patterns: ["*"]

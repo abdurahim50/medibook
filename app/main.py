@@ -199,7 +199,7 @@ def list_available_slots(_: int = Depends(current_patient_id)):
             SELECT s.id, s.clinic_name, s.starts_at
             FROM slots s
             LEFT JOIN appointments a ON a.slot_id = s.id
-            WHERE a.id IS NULL
+            WHERE a.id IS NULL AND s.starts_at > now()
             ORDER BY s.starts_at
             """
         ).fetchall()
@@ -219,10 +219,18 @@ _APPOINTMENT_SELECT = """
 def book_appointment(body: BookingRequest, patient_id: int = Depends(current_patient_id)):
     try:
         with get_connection() as conn:
-            if conn.execute("SELECT 1 FROM slots WHERE id = %s", (body.slot_id,)).fetchone() is None:
+            slot = conn.execute(
+                "SELECT starts_at > now() AS upcoming FROM slots WHERE id = %s", (body.slot_id,)
+            ).fetchone()
+            if slot is None:
                 audit.event("appointment.book", "failure", reason="slot_not_found",
                             patient_id=patient_id, slot_id=body.slot_id)
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "Slot not found")
+            if not slot["upcoming"]:
+                # A slot whose time has passed cannot be booked (MB-005).
+                audit.event("appointment.book", "failure", reason="slot_in_past",
+                            patient_id=patient_id, slot_id=body.slot_id)
+                raise HTTPException(status.HTTP_409_CONFLICT, "Slot is no longer available")
             appointment_id = conn.execute(
                 "INSERT INTO appointments (patient_id, slot_id) VALUES (%s, %s) RETURNING id",
                 (patient_id, body.slot_id),

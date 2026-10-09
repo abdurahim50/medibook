@@ -117,15 +117,25 @@ resource "aws_db_parameter_group" "main" {
     name  = "log_disconnections"
     value = "1"
   }
-  # Schema changes (CREATE, ALTER, DROP) are logged without parameters, so no
-  # patient data reaches the log; the destructive-SQL alarm reads them (F-7).
+  # Schema changes (CREATE, ALTER, DROP) are logged; the destructive-SQL alarm
+  # reads them (F-7).
   parameter {
     name  = "log_statement"
     value = "ddl"
   }
   parameter {
     name  = "log_min_duration_statement"
-    value = "1000" # milliseconds; statements slower than this are logged (without parameters)
+    value = "1000" # milliseconds; statements slower than this are logged
+  }
+  # Never write bind parameters (emails, password hashes) to the log (MB-006).
+  # PostgreSQL's default (-1) logs them in full with slow statements.
+  parameter {
+    name  = "log_parameter_max_length"
+    value = "0"
+  }
+  parameter {
+    name  = "log_parameter_max_length_on_error"
+    value = "0"
   }
 }
 
