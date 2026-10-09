@@ -9,7 +9,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import drop_all, get_connection
+from app.db import drop_all, get_connection, init_db
 
 PASSWORD = "Test-Only-Passw0rd"  # synthetic, used only inside this test run
 
@@ -17,9 +17,10 @@ PASSWORD = "Test-Only-Passw0rd"  # synthetic, used only inside this test run
 @pytest.fixture
 def client():
     drop_all()
+    init_db()
     from app.main import app
 
-    with TestClient(app) as test_client:  # startup creates the tables
+    with TestClient(app) as test_client:
         with get_connection() as conn, conn.cursor() as cur:
             cur.executemany(
                 "INSERT INTO slots (clinic_name, starts_at) VALUES (%s, %s)",

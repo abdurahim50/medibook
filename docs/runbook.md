@@ -48,7 +48,7 @@ aws logs tail $LOG_GROUP --since 15m
 | Symptom | Likely cause | Action |
 | --- | --- | --- |
 | `CannotPullContainerError` | Image digest missing from ECR, or execution role cannot pull | Check `image_digest` in `terraform.tfvars` exists in ECR; check `iam.tf` |
-| `ResourceInitializationError` mentioning SSM | Seed password parameter missing or not readable | `aws ssm get-parameter --name /medibook/dev/seed-password` |
+| `ResourceInitializationError` mentioning SSM (migration task) | Seed password parameter missing or not readable | `aws ssm get-parameter --name /medibook/dev/seed-password` |
 | Exit code 1, Python traceback in logs | Application error on start-up | Roll back to the previous digest (step 3) |
 | Health check failures, task running | App process hung or not listening on its port (`/health` does not check the database) | Check logs for the last request served; roll back if a new image caused it |
 | `/health` `200` but `/ready` `503` | API cannot reach the database (RDS down, security group, TLS, credentials) | Check RDS status and API logs for `readiness check failed`; see the data incident below |
@@ -73,7 +73,7 @@ aws logs tail $LOG_GROUP --since 15m
 
 **Known gap:** this alarm needs 2 consecutive minutes without a healthy target. A crash that ECS heals in under 2 minutes does not alarm (recovery drill, 2026-10-05: 32-second outage, no alarm). Check `aws ecs describe-services ... events` after any unexplained 503s.
 
-**Known limitation:** the dev database is SQLite on task storage. A replaced task starts with a freshly seeded database, so bookings made before the failure are lost. Production uses RDS PostgreSQL with backups.
+Data lives in RDS, so a replaced task loses no bookings (drill 3).
 
 ---
 
@@ -115,9 +115,36 @@ Note the time window, sources, accounts affected and actions taken in `docs/evid
 
 ---
 
+## Alarm: `medibook-dev-db-destructive-sql`
+
+**Meaning:** the database log contains `DROP TABLE`, `DROP SCHEMA`, `DROP DATABASE`, or a `DESTRUCTIVE_SQL` warning from a `TRUNCATE`. This includes attempts by `medibook_app` that the database refused. Nothing legitimate drops or truncates tables outside a planned change.
+
+### 1. See what ran, as whom
+
+```bash
+aws logs filter-log-events --log-group-name /aws/rds/instance/medibook-dev/postgresql \
+  --start-time $(( ($(date +%s) - 3600) * 1000 )) \
+  --filter-pattern '?"DROP TABLE" ?"drop table" ?DESTRUCTIVE_SQL' \
+  --query 'events[].message' --output text
+```
+
+Each line shows the client address and `user@database`. `medibook_app` with `ERROR: must be owner` or `permission denied` means the attempt was refused: treat the API as possibly compromised. `medibook_admin` means it ran.
+
+### 2. Decide
+
+- **Refused attempt by `medibook_app`:** no data lost. Investigate the API (recent releases, audit log around the same time) as a security incident.
+- **Ran as `medibook_admin`, not planned:** stop the source (stop the one-off task: `aws ecs list-tasks --cluster medibook-dev --family medibook-dev-migrate`), check whether data is gone (`/ready`, sign in as a demo patient), and if so follow the incident below.
+- **Planned change:** record it with the change reference.
+
+### 3. Record
+
+Timeline, user, statement, and outcome in `docs/evidence/`.
+
+---
+
 ## Incident: data deleted or corrupted (point-in-time restore)
 
-No alarm covers this yet (finding F-7): it is reported by users or noticed in the data. Rehearsed in [drill 4](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore): 23 min 50 s to recover, no data lost.
+Usually found through the alarm below (`DROP` or `TRUNCATE` in the database log); deletes that use ordinary `DELETE` statements raise no alarm and are reported by users or noticed in the data. Rehearsed in [drill 4](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore): 23 min 50 s to recover, no data lost.
 
 ### 1. Contain and choose the restore time
 
@@ -141,7 +168,8 @@ aws rds restore-db-instance-to-point-in-time \
   --restore-time "$RESTORE_TIME" --db-instance-class db.t3.micro --storage-type gp3 \
   --db-subnet-group-name medibook-dev --vpc-security-group-ids "$DB_SG" \
   --db-parameter-group-name medibook-dev-postgres17 \
-  --no-publicly-accessible --no-multi-az --enable-cloudwatch-logs-exports postgresql
+  --no-publicly-accessible --no-multi-az --enable-cloudwatch-logs-exports postgresql \
+  --enable-iam-database-authentication   # the API signs in with IAM tokens
 aws rds wait db-instance-available --db-instance-identifier medibook-dev-restored
 ```
 

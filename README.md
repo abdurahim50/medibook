@@ -97,7 +97,7 @@ python -m app.seed
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The database is published on `127.0.0.1` only, so it is not reachable from your network. The seed command creates two demo patients and ten open slots across two clinics. The demo accounts share the password in `MEDIBOOK_SEED_PASSWORD`; the seed command refuses to run without it and never prints it.
+The database is published on `127.0.0.1` only, so it is not reachable from your network. The seed command creates the schema, two demo patients and ten open slots across two clinics; the API itself never changes the schema. The demo accounts share the password in `MEDIBOOK_SEED_PASSWORD`; the seed command refuses to run without it and never prints it.
 
 | Demo account |
 | --- |
@@ -166,6 +166,8 @@ Protected endpoints require `Authorization: Bearer <access_token>`.
 | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | libpq defaults | PostgreSQL connection ([libpq environment variables](https://www.postgresql.org/docs/current/libpq-envars.html)) |
 | `PGSSLMODE`, `PGSSLROOTCERT` | `prefer` | TLS to the database; `verify-full` with a CA bundle in AWS |
 | `MEDIBOOK_SEED_PASSWORD` | None (required by the seed command) | Password assigned to the demo accounts |
+| `MEDIBOOK_APP_DB_USER` | None | Seed command only: create this least-privilege role for the API and grant it row access (used in AWS) |
+| `MEDIBOOK_DB_IAM_AUTH` | Off | `1`: sign in with an RDS IAM token for `PGUSER` instead of `PGPASSWORD` (needs `AWS_REGION` and AWS credentials; used in AWS) |
 
 Set these in your shell before running the seed command or server. The application does not load `.env` files automatically; `.env.example` lists every supported variable. Never commit a `.env` file or a password.
 
@@ -265,8 +267,8 @@ SECURITY.md    security controls, known issues, reporting
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
-- The application connects as the database admin user, and anyone allowed to run ECS tasks can run commands with those credentials; a role limited to reading and writing MediBook's tables, and restricted one-off tasks, are planned (finding F-8).
-- Deleting data raises no alarm, and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
+- The admin database credentials are injected into the migration task, and anyone allowed to run ECS tasks with a command override can use them; limiting `ecs:RunTask` to a break-glass role and running migrations from CI are planned (finding F-8, partly fixed: the API uses a row-access-only role).
+- Ordinary `DELETE` statements raise no alarm (only `DROP` and `TRUNCATE` do), and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
 - Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).

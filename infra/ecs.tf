@@ -13,7 +13,18 @@ resource "aws_ecs_cluster" "main" {
 }
 
 locals {
-  deploy = var.image_digest != ""
+  deploy      = var.image_digest != ""
+  db_app_user = "medibook_app"
+
+  # Database connection through the standard libpq variables. TLS with full
+  # certificate and hostname verification against the RDS CA bundle in the image.
+  db_environment = [
+    { name = "PGHOST", value = aws_db_instance.main.address },
+    { name = "PGPORT", value = tostring(aws_db_instance.main.port) },
+    { name = "PGDATABASE", value = aws_db_instance.main.db_name },
+    { name = "PGSSLMODE", value = "verify-full" },
+    { name = "PGSSLROOTCERT", value = "/srv/certs/rds-global-bundle.pem" },
+  ]
 }
 
 # Deploy only images signed by the release workflow on main. The check runs
@@ -38,6 +49,7 @@ resource "aws_ecs_task_definition" "api" {
   cpu                      = 256
   memory                   = 512
   execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.api_task.arn # rds-db:connect as medibook_app, nothing else
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -58,12 +70,13 @@ resource "aws_ecs_task_definition" "api" {
       capabilities = { add = [], drop = ["ALL"] }
     }
 
-    # Seed slots and demo patients on start, then run the API. Proxy headers let
-    # the audit log and rate limiter see the real client address behind the ALB;
-    # only the ALB can reach the task, so trusting forwarded headers is safe here.
+    # Run the API only. Schema and seed data come from the migration task below,
+    # which holds the admin credentials (F-8). Proxy headers let the audit log and
+    # rate limiter see the real client address behind the ALB; only the ALB can
+    # reach the task, so trusting forwarded headers is safe here.
     command = [
-      "sh", "-c",
-      "python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+      "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+      "--proxy-headers", "--forwarded-allow-ips=*"
     ]
 
     # hostPort, systemControls and volumesFrom are the values AWS stores by default.
@@ -73,20 +86,13 @@ resource "aws_ecs_task_definition" "api" {
     systemControls = []
     volumesFrom    = []
 
-    # Database connection through the standard libpq variables. TLS with full
-    # certificate and hostname verification against the RDS CA bundle in the image.
-    environment = [
-      { name = "PGHOST", value = aws_db_instance.main.address },
-      { name = "PGPORT", value = tostring(aws_db_instance.main.port) },
-      { name = "PGDATABASE", value = aws_db_instance.main.db_name },
-      { name = "PGSSLMODE", value = "verify-full" },
-      { name = "PGSSLROOTCERT", value = "/srv/certs/rds-global-bundle.pem" },
-    ]
-    secrets = [
-      { name = "MEDIBOOK_SEED_PASSWORD", valueFrom = local.seed_password_arn },
-      { name = "PGUSER", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::" },
-      { name = "PGPASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
-    ]
+    # Least-privilege database role, signed in with a 15-minute IAM token
+    # generated from the task role. No password and no secret in this task.
+    environment = concat(local.db_environment, [
+      { name = "PGUSER", value = local.db_app_user },
+      { name = "MEDIBOOK_DB_IAM_AUTH", value = "1" },
+      { name = "AWS_REGION", value = var.region },
+    ])
 
     mountPoints = [
       { sourceVolume = "tmp", containerPath = "/tmp", readOnly = false },
@@ -98,6 +104,71 @@ resource "aws_ecs_task_definition" "api" {
         awslogs-group         = aws_cloudwatch_log_group.api.name
         awslogs-region        = var.region
         awslogs-stream-prefix = "api"
+      }
+    }
+  }])
+
+  lifecycle {
+    precondition {
+      condition     = data.external.image_signature[0].result.verified == "true" && data.external.image_signature[0].result.digest == var.image_digest
+      error_message = "The image signature was not verified for this digest; only images signed by release.yml on main can be deployed."
+    }
+  }
+}
+
+# ---------- Migration: one-off task with the admin credentials ----------
+# Creates the schema, the medibook_app role and its grants, and the seed data.
+# Run once after each deploy (docs/deployment.md); it exits when done. It is the
+# only task definition that receives the admin credentials.
+
+resource "aws_ecs_task_definition" "migrate" {
+  count = local.deploy ? 1 : 0
+
+  family                   = "${local.name}-migrate"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.execution.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "migrate"
+    image     = "${data.aws_ecr_repository.api.repository_url}@${var.image_digest}"
+    essential = true
+    user      = "10001:10001"
+
+    readonlyRootFilesystem = true
+    linuxParameters = {
+      capabilities = { add = [], drop = ["ALL"] }
+    }
+
+    command = ["python", "-m", "app.seed"]
+
+    portMappings   = []
+    systemControls = []
+    volumesFrom    = []
+    mountPoints    = []
+
+    environment = concat(local.db_environment, [
+      { name = "MEDIBOOK_APP_DB_USER", value = local.db_app_user },
+    ])
+    secrets = [
+      { name = "MEDIBOOK_SEED_PASSWORD", valueFrom = local.seed_password_arn },
+      { name = "PGUSER", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::" },
+      { name = "PGPASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.api.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "migrate"
       }
     }
   }])

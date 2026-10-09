@@ -1,8 +1,12 @@
 """Load synthetic training data into the MediBook database.
 
 Usage:
-    python -m app.seed            # add seed data if the database is empty
+    python -m app.seed            # migrate, then add seed data if the database is empty
     python -m app.seed --reset    # drop all MediBook tables and data, then re-seed
+
+Runs as the database owner: it creates the schema and, when MEDIBOOK_APP_DB_USER
+is set, the API's least-privilege role and its grants. In AWS it runs as a
+one-off ECS task (medibook-<env>-migrate), never inside the API service.
 
 The database is chosen by the standard PG* environment variables.
 
@@ -15,7 +19,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from app import auth
-from app.db import drop_all, get_connection, init_db
+from app.db import drop_all, get_connection, migrate
 
 CLINICS = ["Northside Family Clinic", "Riverside Health Centre"]
 SLOTS_PER_CLINIC = 5
@@ -46,7 +50,7 @@ def seed() -> None:
             "MEDIBOOK_SEED_PASSWORD is not set. Choose a demo password first, for example:\n"
             '  export MEDIBOOK_SEED_PASSWORD="$(openssl rand -base64 18)"'
         )
-    init_db()
+    migrate()
     with get_connection() as conn:
         if conn.execute("SELECT COUNT(*) AS n FROM slots").fetchone()["n"] > 0:
             print("Database already seeded. Use --reset to start again.")

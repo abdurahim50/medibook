@@ -11,7 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import audit, auth
 from app.ratelimit import SigninLimiter
-from app.db import get_connection, init_db
+from app.db import get_connection
 from app.models import (
     AppointmentResponse,
     BookingRequest,
@@ -25,7 +25,8 @@ from app.models import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    # No schema changes here: the API's database role cannot run DDL (finding F-8).
+    # The schema is created by `python -m app.seed`, run as the database owner.
     app.state.signin_limiter = SigninLimiter()
     yield
 

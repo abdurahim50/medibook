@@ -1,6 +1,7 @@
-# Observe: alarms on the two signals that matter most for this service.
+# Observe: alarms on the signals that matter most for this service.
 #   1. Security: denied requests in the audit log (cross-patient reads, sign-in throttling).
 #   2. Availability: no healthy API task behind the load balancer.
+#   3. Data: destructive SQL (DROP, TRUNCATE) in the database log (finding F-7).
 
 # ---------- Alert topic (encrypted with a customer-managed key) ----------
 # CloudWatch cannot publish to a topic encrypted with the AWS-managed SNS key,
@@ -129,6 +130,41 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
     LoadBalancer = aws_lb.api.arn_suffix
     TargetGroup  = aws_lb_target_group.api.arn_suffix
   }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+}
+
+# ---------- Data signal: destructive SQL in the database log ----------
+# log_statement = ddl logs every DROP; a trigger on each table raises a
+# DESTRUCTIVE_SQL warning on TRUNCATE (app/db.py). Denied attempts by the API's
+# role are logged with their statement too, so they also match. Patterns are
+# case-sensitive, hence both spellings.
+
+resource "aws_cloudwatch_log_metric_filter" "destructive_sql" {
+  name           = "${local.name}-db-destructive-sql"
+  log_group_name = aws_cloudwatch_log_group.db.name
+  pattern        = "?\"DROP TABLE\" ?\"drop table\" ?\"DROP SCHEMA\" ?\"drop schema\" ?\"DROP DATABASE\" ?\"drop database\" ?DESTRUCTIVE_SQL"
+
+  metric_transformation {
+    name          = "DestructiveSql"
+    namespace     = "MediBook/${var.environment}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "destructive_sql" {
+  alarm_name          = "${local.name}-db-destructive-sql"
+  alarm_description   = "DROP or TRUNCATE in the database log. Possible data loss or a compromised identity. See docs/runbook.md."
+  namespace           = "MediBook/${var.environment}"
+  metric_name         = "DestructiveSql"
+  statistic           = "Sum"
+  period              = 60
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
   ok_actions    = [aws_sns_topic.alerts.arn]
