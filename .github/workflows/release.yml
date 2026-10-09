@@ -6,6 +6,11 @@ name: Release
 on:
   push:
     branches: [main]
+    # A docs-only merge does not change the image, so it does not publish a new one.
+    paths-ignore:
+      - "docs/**"
+      - "diagrams/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
