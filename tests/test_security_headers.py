@@ -44,6 +44,6 @@ def test_api_docs_get_a_csp_that_allows_swagger_ui(client):
     response = client.get("/docs")
     assert response.status_code == 200
     directives = csp_directives(response.headers["content-security-policy"])
-    assert "https://cdn.jsdelivr.net" in directives["script-src"]
+    assert set(directives["script-src"]) == {"'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"}
     assert directives["frame-ancestors"] == ["'none'"]
     assert_headers(response)
