@@ -17,7 +17,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Risk Assessment (RA) | 2 | 0 | 0 |
 | System and Services Acquisition (SA) | 3 | 0 | 0 |
 | System and Communications Protection (SC) | 2 | 2 | 0 |
-| System and Information Integrity (SI) | 4 | 1 | 0 |
+| System and Information Integrity (SI) | 3 | 2 | 0 |
 | Supply Chain Risk Management (SR) | 2 | 0 | 0 |
 
 ## Access Control (AC)
@@ -25,7 +25,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
 | AC-3 Access Enforcement | Every appointment query is scoped to the patient in the session; other patients' records return `404` (MB-001 fixed) | [Threat model TM-01](threat-model.md), [before](evidence/access-control/before-fix.txt) and [after](evidence/access-control/after-fix.txt) tests, cloud smoke test | Implemented |
-| AC-6 Least Privilege | ECS execution role limited to one repository, one log group and one parameter; no task role, so application code holds no AWS credentials. CI release role limited to one ECR repository. Containers run as UID 10001 with all capabilities dropped. Policy MB-POL-03 blocks wildcard IAM. Gap (drill 4, F-8): the application connects as the database admin, and anyone allowed to run ECS tasks can run any command with those credentials | [`infra/iam.tf`](../infra/iam.tf), [`infra/bootstrap/main.tf`](../infra/bootstrap/main.tf), [policy evidence](evidence/policy/terraform-plan-policies.md), [recovery drills](evidence/deployment/recovery-drills.md) | Partial |
+| AC-6 Least Privilege | ECS execution role limited to one repository, one log group, one parameter and the database secret. The API's task role can only `rds-db:connect` as `medibook_app`, a database role with row access only (no DDL, no `TRUNCATE`, not the owner); the admin credentials go only to a one-off migration task. CI release role limited to one ECR repository. Containers run as UID 10001 with all capabilities dropped. Policy MB-POL-03 blocks wildcard IAM. Drill 5: the drill 4 wipe, run with the API's credentials, was refused. Gap (F-8): anyone allowed to run the migration task with a command override still has the owner's rights; restricting `ecs:RunTask` to a break-glass role is planned | [`infra/iam.tf`](../infra/iam.tf), [`infra/bootstrap/main.tf`](../infra/bootstrap/main.tf), [policy evidence](evidence/policy/terraform-plan-policies.md), [recovery drills](evidence/deployment/recovery-drills.md) | Partial |
 | AC-7 Unsuccessful Logon Attempts | Failed sign-ins throttled per account (5) and per client (20) per 15 minutes; `429` with `Retry-After`; edge rate limit in AWS WAF (MB-002) | [`app/ratelimit.py`](../app/ratelimit.py), [`tests/test_ratelimit.py`](../tests/test_ratelimit.py), cloud smoke test (`401` ×5 then `429`) | Implemented |
 | AC-12 Session Termination | Sessions expire after 8 hours and are revoked on sign-out | [`app/auth.py`](../app/auth.py), [`tests/test_api.py`](../tests/test_api.py) | Implemented |
 | AC-2 Account Management | Patients self-register. No account disabling, review or staff roles yet | [Product brief](brief.md) | Planned |
@@ -56,15 +56,15 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
 | CP-10 System Recovery and Reconstitution | ECS replaces a failed task automatically (drill 3: 74 s, no data lost); deployment circuit breaker rolls back failed releases; whole environment rebuilt from Terraform each session. Database restored from point-in-time backups in drill 4. Gaps: single-AZ database in dev, and the database cutover is manual and outside Terraform (F-10) | [Recovery drills](evidence/deployment/recovery-drills.md), [runbook](runbook.md#incident-data-deleted-or-corrupted-point-in-time-restore) | Partial |
-| CP-9 System Backup | RDS automated backups with 7-day point-in-time recovery, encrypted with the database KMS key; MB-POL-10 requires at least 7 days. Restore tested in drill 4: data wiped by an operator error was restored to 21 seconds before the wipe, RTO 23 min 50 s, no data lost. Dev backups are deleted with the environment | [`infra/database.tf`](../infra/database.tf), [recovery drills](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore) | Implemented |
-| CP-4 Contingency Plan Testing | Four recovery drills with measured timelines and recorded findings: credential stuffing, two task crashes and a database restore. Each finding has an owner action | [Recovery drills](evidence/deployment/recovery-drills.md) | Implemented |
+| CP-9 System Backup | RDS automated backups with 7-day point-in-time recovery, encrypted with the database KMS key; MB-POL-10 requires at least 7 days. Restore tested twice: drill 4, RTO 23 min 50 s; drill 5, RTO 21 min 26 s, including IAM sign-in on the restored instance. No data lost in either. Dev backups are deleted with the environment | [`infra/database.tf`](../infra/database.tf), [recovery drills](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore) | Implemented |
+| CP-4 Contingency Plan Testing | Five recovery drills with measured timelines and recorded findings: credential stuffing, two task crashes and two database restores. Drill 5 repeated drill 4 to verify its fixes. Each finding has an owner action | [Recovery drills](evidence/deployment/recovery-drills.md) | Implemented |
 
 ## Identification and Authentication (IA)
 
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
 | IA-2 Identification and Authentication (Organizational Users) | Patients authenticate with email and password; identity comes only from the server-side session, never from request data | [`app/main.py`](../app/main.py), threat model TM-05 | Implemented |
-| IA-5 Authenticator Management | Passwords hashed with argon2id, minimum length 12; session tokens are 256-bit random values stored only as SHA-256 digests. No long-lived AWS keys in CI: GitHub OIDC with one-hour credentials | [`app/auth.py`](../app/auth.py), [release evidence](evidence/supply-chain/release-signing.md) | Implemented |
+| IA-5 Authenticator Management | Passwords hashed with argon2id, minimum length 12; session tokens are 256-bit random values stored only as SHA-256 digests. No long-lived AWS keys in CI: GitHub OIDC with one-hour credentials. The API has no database password: it signs in with 15-minute RDS IAM tokens; the admin password is generated and rotated by RDS | [`app/auth.py`](../app/auth.py), [release evidence](evidence/supply-chain/release-signing.md) | Implemented |
 | IA-2(1) Multi-Factor Authentication | Not offered to patients | | Planned |
 
 ## Incident Response (IR)
@@ -102,7 +102,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
 | SI-2 Flaw Remediation | OS packages upgraded at build; fixable HIGH and CRITICAL vulnerabilities block merge and release; first CI failure (pip-vendored packages) fixed by removing pip from the image | [Vulnerability exceptions](vulnerability-exceptions.md) | Implemented |
-| SI-4 System Monitoring | CloudWatch alarms for denied requests and for no healthy targets, notifying an encrypted SNS topic; VPC flow logs | [Runbook](runbook.md), [`infra/monitoring.tf`](../infra/monitoring.tf) | Implemented |
+| SI-4 System Monitoring | CloudWatch alarms for denied requests, no healthy targets, and destructive SQL in the database log (`DROP`, or a `TRUNCATE` warning trigger), notifying an encrypted SNS topic; VPC flow logs. Drill 5: a refused wipe alarmed in 1 min 53 s, a successful one in 1 min 21 s. Gap: a database outage seen only by `/ready` raises no alarm (F-12) | [Runbook](runbook.md), [`infra/monitoring.tf`](../infra/monitoring.tf) | Partial |
 | SI-10 Information Input Validation | Strict request types, length limits, unknown fields rejected, parameterised queries only; SQL injection fixture blocked by SAST; ZAP injection tests pass | [CI evidence](evidence.md), [DAST evidence](evidence/dast/zap-scan.md) | Implemented |
 | SI-11 Error Handling | Identical `401` for unknown account and wrong password; another patient's record returns `404`, not `403`, so existence is not revealed | [`app/main.py`](../app/main.py), threat model TM-04 | Implemented |
 | SI-7 Software, Firmware, and Information Integrity | Images keyless-signed and attested by the release workflow; immutable ECR tags; deployment by digest. Terraform verifies the signature and SBOM attestation during every deployment plan and refuses unsigned images; MB-POL-09 requires digests and the verification step. Changes made directly through the AWS API, outside Terraform, are not checked | [Release evidence](evidence/supply-chain/release-signing.md), [`infra/ecs.tf`](../infra/ecs.tf) | Partial |
@@ -121,4 +121,4 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 3. **SI-7:** deployments outside Terraform (console or API) are not checked; restrict who can register task definitions, or move deployment into CI.
 4. **AU-9 and AU-11:** longer retention and logs in a separate, write-protected account.
 5. **IA-2(1) and AC-2:** MFA and account lifecycle management, including staff roles.
-6. **AC-6 and SI-4:** an application database role without DDL rights, `ecs:RunTask` command overrides restricted to a break-glass role, and alerts on destructive SQL (F-7, F-8).
+6. **AC-6 and SI-4:** `ecs:RunTask` command overrides restricted to a break-glass role, migrations run from CI (F-8), and alarms on readiness failures and mass `DELETE` (F-7, F-12).
