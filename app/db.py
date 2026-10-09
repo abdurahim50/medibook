@@ -64,6 +64,21 @@ BEGIN
     RETURN NULL;
 END
 $$;
+
+-- The same marker for every dropped table or schema, however the statement was
+-- spelled (MB-007: the log filter is case-sensitive, SQL is not).
+CREATE OR REPLACE FUNCTION medibook_warn_drop() RETURNS event_trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    obj record;
+BEGIN
+    FOR obj IN SELECT * FROM pg_event_trigger_dropped_objects()
+               WHERE object_type IN ('table', 'schema') LOOP
+        RAISE WARNING '%: DROP % % by %', upper('destructive_sql'),
+            obj.object_type, obj.object_identity, session_user;
+    END LOOP;
+END
+$$;
 """
 
 TABLES = ("patients", "sessions", "slots", "appointments")
@@ -87,11 +102,15 @@ def get_connection() -> psycopg.Connection:
     database's activity view and logs.
     """
     extra = {}
+    timeout = 5
     if os.environ.get("MEDIBOOK_DB_IAM_AUTH") == "1":
         extra["password"] = iam_auth_token()
+        # The first IAM sign-in after a deployment or restore took about 8 s
+        # in drill 5 (finding F-11); later ones take well under a second.
+        timeout = 10
     return psycopg.connect(
         row_factory=dict_row,
-        connect_timeout=5,
+        connect_timeout=timeout,
         application_name="medibook-api",
         options="-c timezone=UTC",  # timestamps leave the API in UTC, whatever the server's zone
         **extra,
@@ -119,7 +138,7 @@ def iam_auth_token() -> str:
 
 
 def init_db() -> None:
-    """Create all tables, indexes and the TRUNCATE warning triggers if missing."""
+    """Create all tables, indexes and the destructive-SQL warning triggers if missing."""
     with get_connection() as conn:
         conn.execute(SCHEMA)
         for table in TABLES:
@@ -129,6 +148,27 @@ def init_db() -> None:
                     "FOR EACH STATEMENT EXECUTE FUNCTION medibook_warn_truncate()"
                 ).format(sql.Identifier(table))
             )
+    _create_drop_trigger()
+
+
+def _create_drop_trigger() -> None:
+    """Event trigger that marks every DROP. Needs superuser (rds_superuser on RDS).
+
+    If the role may not create it, the migration goes on and says so: DROP is
+    still caught by the statement patterns in the log filter.
+    """
+    try:
+        with get_connection() as conn:
+            if conn.execute(
+                "SELECT 1 FROM pg_event_trigger WHERE evtname = 'medibook_warn_drop'"
+            ).fetchone() is None:
+                conn.execute(
+                    "CREATE EVENT TRIGGER medibook_warn_drop ON sql_drop "
+                    "EXECUTE FUNCTION medibook_warn_drop()"
+                )
+    except psycopg.errors.InsufficientPrivilege:
+        print("WARNING: could not create the DROP event trigger; "
+              "DROP detection relies on statement patterns only.")
 
 
 def grant_app_access(role: str) -> None:

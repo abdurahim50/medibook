@@ -60,11 +60,15 @@ aws logs tail $LOG_GROUP --since 15m
   ```bash
   aws ecs wait services-stable --cluster $CLUSTER --services $SERVICE && echo stable
   ```
-- **Bad deployment:** the deployment circuit breaker rolls back automatically. If it did not, redeploy the last known good digest:
+- **Bad deployment:** the deployment circuit breaker rolls back automatically. If it did not, redeploy the last known good digest through the same checks as any deployment: the plan verifies its signature, and the policy check runs before apply.
   ```bash
-  terraform apply -var "image_digest=<last good digest>"
+  GOOD=sha256:...   # the last good digest, from an earlier Release run summary
+  terraform plan -var "image_digest=$GOOD" -out=rollback.tfplan
+  ../scripts/policy-check.sh rollback.tfplan
+  terraform apply rollback.tfplan
   ```
-- **Configuration drift:** `terraform plan` shows the difference; apply to restore.
+  Then set `image_digest` in `terraform.tfvars` to the same value, so the next plan does not undo the rollback.
+- **Configuration drift:** `terraform plan -out=drift.tfplan`, review the difference, `../scripts/policy-check.sh drift.tfplan`, then apply that plan.
 
 ### 4. Verify and record
 
@@ -112,6 +116,31 @@ filter type = "audit" and outcome = "denied"
 ### 3. Record
 
 Note the time window, sources, accounts affected and actions taken in `docs/evidence/`.
+
+---
+
+## Alarm: `medibook-dev-api-database-unreachable`
+
+**Meaning:** in each of 2 consecutive minutes, the API logged 3 or more failed readiness checks or database connection errors. `/health` stays `200` and the load balancer keeps the task, so the no-healthy-targets alarm does not fire for this (F-6, F-12). Patients get errors on sign-in and booking.
+
+### 1. Confirm
+
+```bash
+curl -s -w " %{http_code}\n" "$(terraform output -raw api_url)/ready"
+aws rds describe-db-instances --query 'DBInstances[].[DBInstanceIdentifier,DBInstanceStatus]' --output text
+aws logs tail $LOG_GROUP --since 15m | grep -E "readiness check failed|OperationalError|ConnectionTimeout" | tail -5
+```
+
+### 2. Find the cause
+
+| What you see | Likely cause | Action |
+| --- | --- | --- |
+| RDS not `available` (`modifying`, `rebooting`, `renaming`) | Planned change, restore cutover or maintenance | Wait, or follow the data incident below |
+| RDS `available`, `ConnectionTimeout` once just after a deploy | First IAM sign-in is slow (F-11); the timeout is 10 s with IAM | Usually clears within a minute; investigate if it repeats |
+| RDS `available`, `PAM authentication failed` in the database log | IAM sign-in refused: task role policy, `rds_iam` grant, or IAM authentication off after a restore | Check `aws_iam_role_policy.api_task`; re-run the migration task; restore with `--enable-iam-database-authentication` |
+| RDS `available`, `role "medibook_app" does not exist` | Migration not run on this database | Run the migration task (docs/deployment.md, step 4) |
+
+**Limit:** the alarm needs traffic or someone calling `/ready`; with no requests nothing is logged. Production adds a synthetic check that calls `/ready` every minute.
 
 ---
 

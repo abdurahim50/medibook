@@ -23,6 +23,7 @@ output "alarms" {
     aws_cloudwatch_metric_alarm.denied.alarm_name,
     aws_cloudwatch_metric_alarm.no_healthy_targets.alarm_name,
     aws_cloudwatch_metric_alarm.destructive_sql.alarm_name,
+    aws_cloudwatch_metric_alarm.database_unreachable.alarm_name,
   ]
 }
 

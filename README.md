@@ -18,7 +18,7 @@ The current release provides the patient booking API. Staff tools and an AI-assi
 
 - Patient registration, sign-in and sign-out
 - Server-side sessions with an 8-hour expiry and immediate revocation on sign-out
-- Open appointment slots across clinics, ordered by time
+- Open, upcoming appointment slots across clinics, ordered by time; past slots cannot be booked
 - Booking with database-enforced protection against double booking
 - Patient-specific appointment list
 - Strict request validation and consistent HTTP errors
@@ -80,12 +80,14 @@ source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 
 # Start a local PostgreSQL with a development and a test database
-# (same image as CI; see POSTGRES_IMAGE in scripts/dast-scan.sh)
+# (same image and digest as CI and scripts/dast-scan.sh)
 export PGPASSWORD="$(openssl rand -hex 16)"   # local only; lost when the shell closes
 docker run -d --name medibook-db -p 127.0.0.1:5432:5432 \
   -e POSTGRES_USER=medibook -e POSTGRES_DB=medibook -e POSTGRES_PASSWORD="$PGPASSWORD" \
-  <postgres image from scripts/dast-scan.sh>
-sleep 3 && docker exec medibook-db createdb -U medibook medibook_test
+  postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+for _ in $(seq 1 30); do docker exec medibook-db pg_isready -U medibook -d medibook >/dev/null 2>&1 && break; sleep 1; done
+docker exec medibook-db pg_isready -U medibook -d medibook   # fails here if PostgreSQL did not start in 30 s
+docker exec medibook-db createdb -U medibook medibook_test
 
 # Point the app at it (standard libpq variables)
 export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=medibook PGDATABASE=medibook
@@ -269,13 +271,13 @@ SECURITY.md    security controls, known issues, reporting
 ## Known limitations
 
 - API only; no patient web interface yet.
-- Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md).
+- Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md). Known issues found in reviews and their fixes are listed there.
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
 - The admin database credentials are injected into the migration task, and anyone allowed to run ECS tasks with a command override can use them; limiting `ecs:RunTask` to a break-glass role and running migrations from CI are planned (finding F-8, partly fixed: the API uses a row-access-only role).
 - Ordinary `DELETE` statements raise no alarm (only `DROP` and `TRUNCATE` do), and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
-- Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)). The first IAM sign-in after a deployment can exceed the 5-second connect timeout (F-11).
-- A database outage shows only on `/ready` and raises no alarm yet (F-12).
+- Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
+- The database-unreachable alarm depends on traffic or calls to `/ready`; with no requests a database outage goes unnoticed until the next request (F-12). Production adds a synthetic check.
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 

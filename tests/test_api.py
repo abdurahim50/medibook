@@ -251,3 +251,30 @@ def test_times_are_returned_in_utc(client):
     headers = signup_and_signin(client, "alex@example.com")
     starts_at = client.get("/slots", headers=headers).json()[0]["starts_at"]
     assert starts_at in ("2030-01-01T09:00:00Z", "2030-01-01T09:00:00+00:00")
+
+
+# ---------- Past slots (MB-005) ----------
+
+def _add_slot(starts_at: datetime) -> int:
+    with get_connection() as conn:
+        return conn.execute(
+            "INSERT INTO slots (clinic_name, starts_at) VALUES (%s, %s) RETURNING id",
+            ("Northside Family Clinic", starts_at),
+        ).fetchone()["id"]
+
+
+def test_past_slots_are_not_listed(client):
+    past_id = _add_slot(datetime(2020, 1, 1, 9, tzinfo=timezone.utc))
+    auth = signup_and_signin(client, "past.list@example.com")
+    ids = [s["id"] for s in client.get("/slots", headers=auth).json()]
+    assert past_id not in ids
+    assert len(ids) == 2  # the two future slots from the fixture
+
+
+def test_past_slot_cannot_be_booked(client):
+    past_id = _add_slot(datetime(2020, 1, 1, 9, tzinfo=timezone.utc))
+    auth = signup_and_signin(client, "past.book@example.com")
+    response = client.post("/appointments", json={"slot_id": past_id}, headers=auth)
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Slot is no longer available"}
+    assert client.get("/appointments", headers=auth).json() == []
