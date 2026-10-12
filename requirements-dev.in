@@ -1,0 +1,6 @@
+# Test dependencies on top of the runtime ones. requirements-dev.txt is generated:
+#   pip-compile --generate-hashes --strip-extras requirements-dev.in
+-c requirements.txt
+-r requirements.in
+httpx==0.28.1
+pytest==9.1.1

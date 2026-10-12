@@ -23,7 +23,7 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Delivery pipeline | Every change to `main` goes through a pull request that must pass tests, SAST, dependency, secret and image scans, policy tests, an authenticated DAST scan and a policy-checked Terraform plan of both stacks |
 | HTTP security headers | `nosniff`, `no-store`, restrictive CSP, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin` and `Referrer-Policy: no-referrer` on every response |
 | Infrastructure policy | Every Terraform plan is checked against Conftest policies (network exposure, IAM wildcards, container hardening, encryption, retention, tagging) before apply; the policies are unit-tested in CI |
-| Supply chain | Images are built and published only by the release workflow on `main`, through GitHub OIDC (no stored AWS keys); each image has a CycloneDX SBOM and a keyless Cosign signature and attestation, verified before deploy |
+| Supply chain | Python dependencies installed from a lock file with SHA-256 hashes for every package (pip-tools, `--require-hashes`); images are built and published only by the release workflow on `main`, through GitHub OIDC (no stored AWS keys); each image has a CycloneDX SBOM and a keyless Cosign signature and attestation, verified before deploy |
 | Data minimisation | No symptoms, diagnoses, date of birth, insurance or payment data collected |
 
 Each control is mapped to NIST SP 800-53 with its evidence in [docs/controls.md](docs/controls.md).
