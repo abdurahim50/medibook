@@ -20,6 +20,16 @@ def hash_password(password: str) -> str:
     return _hasher.hash(password)
 
 
+# Verified against for unknown accounts, so sign-in costs the same argon2 work
+# whether or not the email exists (MB-008: no timing signal for enumeration).
+_DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(32))
+
+
+def burn_verification(password: str) -> None:
+    """Do a full argon2 verification that always fails, to match the timing of a real one."""
+    verify_password(_DUMMY_HASH, password)
+
+
 def verify_password(password_hash: str, password: str) -> bool:
     """Return True only if the password matches the stored hash."""
     try:

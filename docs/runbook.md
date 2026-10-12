@@ -121,7 +121,7 @@ Note the time window, sources, accounts affected and actions taken in `docs/evid
 
 ## Alarm: `medibook-dev-api-database-unreachable`
 
-**Meaning:** in each of 2 consecutive minutes, the API logged 3 or more failed readiness checks or database connection errors. `/health` stays `200` and the load balancer keeps the task, so the no-healthy-targets alarm does not fire for this (F-6, F-12). Patients get errors on sign-in and booking.
+**Meaning:** in each of 2 consecutive minutes, the API logged at least one failed readiness check or database connection error. `/health` stays `200` and the load balancer keeps the task, so the no-healthy-targets alarm does not fire for this (F-6, F-12). Patients get errors on sign-in and booking.
 
 ### 1. Confirm
 
@@ -140,7 +140,7 @@ aws logs tail $LOG_GROUP --since 15m | grep -E "readiness check failed|Operation
 | RDS `available`, `PAM authentication failed` in the database log | IAM sign-in refused: task role policy, `rds_iam` grant, or IAM authentication off after a restore | Check `aws_iam_role_policy.api_task`; re-run the migration task; restore with `--enable-iam-database-authentication` |
 | RDS `available`, `role "medibook_app" does not exist` | Migration not run on this database | Run the migration task (docs/deployment.md, step 4) |
 
-**Limit:** the alarm needs traffic or someone calling `/ready`; with no requests nothing is logged. Production adds a synthetic check that calls `/ready` every minute.
+**Limit:** the alarm needs traffic or someone calling `/ready`; with no requests nothing is logged. A scheduled `/ready` check once a minute, planned for production, closes that gap and would trip this alarm on its own. A single failure (such as the slow first IAM sign-in after a deploy, F-11) does not alarm, because two minutes in a row are needed.
 
 ---
 

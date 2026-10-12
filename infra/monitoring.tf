@@ -179,8 +179,12 @@ resource "aws_cloudwatch_metric_alarm" "destructive_sql" {
 # load balancer healthy and the no-healthy-targets alarm silent (F-12). The API
 # logs every failed readiness check, and an unhandled database error writes a
 # psycopg.OperationalError traceback, so either one counts here.
-# Limit: it needs traffic or someone calling /ready; production adds a
-# synthetic check (CloudWatch Synthetics or Route 53) that calls /ready.
+# Threshold: at least one failure in each of 2 consecutive minutes. MediBook is
+# a low-traffic clinic API, so a higher per-minute count might never be reached
+# in a real outage; requiring 2 minutes still ignores the one slow first IAM
+# sign-in after a deployment (F-11). A once-a-minute synthetic /ready check
+# would also trip it.
+# Limit: it needs traffic or someone calling /ready.
 
 resource "aws_cloudwatch_log_metric_filter" "database_unreachable" {
   name           = "${local.name}-api-database-unreachable"
@@ -204,7 +208,7 @@ resource "aws_cloudwatch_metric_alarm" "database_unreachable" {
   period              = 60
   evaluation_periods  = 2
   datapoints_to_alarm = 2
-  threshold           = 3
+  threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
 

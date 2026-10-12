@@ -165,9 +165,11 @@ def signin(body: SigninRequest, request: Request):
         row = conn.execute(
             "SELECT id, password_hash FROM patients WHERE email = %s", (body.email.lower(),)
         ).fetchone()
-    # Same message for unknown email and wrong password: no account enumeration.
-    # The log records which case it was; the client never learns.
+    # Same message and the same argon2 work for unknown email and wrong password:
+    # no account enumeration by response or timing (MB-008). The log records which
+    # case it was; the client never learns.
     if row is None:
+        auth.burn_verification(body.password)
         limiter.record_failure(body.email, client)
         audit.event("auth.signin", "failure", reason="unknown_account")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
