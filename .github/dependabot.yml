@@ -3,6 +3,8 @@
 # are enabled separately in the repository settings and are not delayed by this.
 version: 2
 updates:
+  # requirements.in lists direct dependencies; Dependabot updates it and
+  # regenerates the hashed requirements*.txt locks with pip-compile together.
   - package-ecosystem: pip
     directory: /
     schedule:

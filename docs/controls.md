@@ -111,7 +111,7 @@ How MediBook's controls map to [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pub
 
 | Control | Implementation | Evidence | Status |
 | --- | --- | --- | --- |
-| SR-3 Supply Chain Controls and Processes | Base image pinned by digest; GitHub Actions pinned by commit SHA; Trivy, Cosign, Syft, Gitleaks and Conftest downloaded as release binaries and run only if checksums match; ZAP image pinned by digest | [`Dockerfile`](../Dockerfile), [`ci.yml`](../.github/workflows/ci.yml), [`release.yml`](../.github/workflows/release.yml) | Implemented |
+| SR-3 Supply Chain Controls and Processes | Base image pinned by digest; every Python package pinned with SHA-256 hashes in a pip-tools lock and installed with `--require-hashes`; GitHub Actions pinned by commit SHA; Trivy, Cosign, Syft, Gitleaks and Conftest downloaded as release binaries and run only if checksums match; ZAP image pinned by digest | [`Dockerfile`](../Dockerfile), [`ci.yml`](../.github/workflows/ci.yml), [`release.yml`](../.github/workflows/release.yml) | Implemented |
 | SR-4 Provenance | Each image is linked to its commit, workflow run and signer identity (`release.yml@refs/heads/main`), with a signed CycloneDX SBOM in the public Sigstore transparency log | [Release evidence](evidence/supply-chain/release-signing.md) | Implemented |
 
 ## Main gaps before real patient data
