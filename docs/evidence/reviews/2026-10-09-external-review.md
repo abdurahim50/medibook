@@ -15,3 +15,14 @@ An independent AI review of commit `99bc1af` (OpenAI) from source, CI logs and i
 **Not changed:** the reviewer's point that the readiness alarm needs traffic stands; a synthetic `/ready` check is listed as a production gap in [controls](../../controls.md).
 
 **To verify in AWS at the next deployment:** MB-004 (audit `client_ip` with a forged header), MB-006 (no parameters in the RDS log), MB-007 (event trigger created by the migration as `medibook_admin`; if RDS refuses it, the migration logs a warning and the statement patterns remain), F-12 (alarm fires).
+
+## Second round (commit `6342d03`)
+
+The reviewer confirmed all six fixes above and CI green on 67 tests, then raised three more.
+
+| # | Finding | Verified how | Fix | Test |
+| --- | --- | --- | --- | --- |
+| MB-008 | Sign-in skipped argon2 for unknown emails, a timing signal despite the identical `401`; sign-up's `409` confirms registered emails | Code review of `signin` and `signup` | Unknown emails are verified against a dummy hash ([`app/auth.py`](../../../app/auth.py)). Sign-up `409` accepted and documented in [SECURITY.md](../../../SECURITY.md#known-issues); sign-up added to the WAF per-IP rate limit ([`infra/waf.tf`](../../../infra/waf.tf)) | [`tests/test_api.py`](../../../tests/test_api.py): the dummy hash is verified on an unknown email |
+| R-7 | README `pg_isready` without `-h` can succeed against the temporary init server on the Unix socket, before TCP is up | PostgreSQL container start-up runs an init server on the socket only | `-h 127.0.0.1` on both checks ([`README.md`](../../../README.md)) | n/a |
+| R-8 | The database-unreachable threshold (3 a minute) can never be reached by a once-a-minute synthetic check, and low real traffic might not reach it either | Arithmetic; MediBook's traffic is low | Threshold lowered to at least 1 failure in each of 2 consecutive minutes; still ignores a single slow first sign-in (F-11) ([`infra/monitoring.tf`](../../../infra/monitoring.tf), [`docs/runbook.md`](../../runbook.md)) | n/a |
+| R-9 | `pydantic_core` pinned separately from `pydantic`, so Dependabot proposed an incompatible pair (PR #29, blocked by CI) | `pip` refused: `pydantic==2.13.5` requires an exact `pydantic_core` | Separate pin removed; `pydantic` brings its exact core. PR #29 closed. Planned: `pip-tools` with hashes so every indirect pin moves with its parent ([`requirements.txt`](../../../requirements.txt)) | CI dependency install |

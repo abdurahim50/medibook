@@ -278,3 +278,25 @@ def test_past_slot_cannot_be_booked(client):
     assert response.status_code == 409
     assert response.json() == {"detail": "Slot is no longer available"}
     assert client.get("/appointments", headers=auth).json() == []
+
+
+# ---------- Enumeration by timing (MB-008) ----------
+
+def test_rejected_signins_each_verify_one_password_hash(client, monkeypatch):
+    """Wrong password and unknown email both do one argon2 verification (MB-008)."""
+    import app.auth as auth_module
+
+    signup_and_signin(client, "timing@example.com")
+    checked = []
+    real_verify = auth_module.verify_password
+    monkeypatch.setattr(auth_module, "verify_password",
+                        lambda h, p: checked.append(h) or real_verify(h, p))
+
+    for email in ("timing@example.com", "nobody@example.com"):
+        response = client.post("/auth/signin", json={"email": email, "password": PASSWORD + "-wrong"})
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Invalid email or password"}
+
+    assert len(checked) == 2
+    assert checked[0] != auth_module._DUMMY_HASH  # the account's real hash
+    assert checked[1] == auth_module._DUMMY_HASH

@@ -85,8 +85,9 @@ export PGPASSWORD="$(openssl rand -hex 16)"   # local only; lost when the shell 
 docker run -d --name medibook-db -p 127.0.0.1:5432:5432 \
   -e POSTGRES_USER=medibook -e POSTGRES_DB=medibook -e POSTGRES_PASSWORD="$PGPASSWORD" \
   postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
-for _ in $(seq 1 30); do docker exec medibook-db pg_isready -U medibook -d medibook >/dev/null 2>&1 && break; sleep 1; done
-docker exec medibook-db pg_isready -U medibook -d medibook   # fails here if PostgreSQL did not start in 30 s
+# -h 127.0.0.1: wait for the TCP listener, not the temporary init server on the Unix socket
+for _ in $(seq 1 30); do docker exec medibook-db pg_isready -h 127.0.0.1 -U medibook -d medibook >/dev/null 2>&1 && break; sleep 1; done
+docker exec medibook-db pg_isready -h 127.0.0.1 -U medibook -d medibook   # fails here if PostgreSQL did not start in 30 s
 docker exec medibook-db createdb -U medibook medibook_test
 
 # Point the app at it (standard libpq variables)

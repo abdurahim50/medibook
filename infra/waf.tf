@@ -22,16 +22,35 @@ resource "aws_wafv2_web_acl" "api" {
         evaluation_window_sec = 300
         aggregate_key_type    = "IP"
 
+        # Sign-in and sign-up: both answer whether an email is registered
+        # (sign-up with 409, MB-008), so both are rate limited per IP.
         scope_down_statement {
-          byte_match_statement {
-            search_string         = "/auth/signin"
-            positional_constraint = "EXACTLY"
-            field_to_match {
-              uri_path {}
+          or_statement {
+            statement {
+              byte_match_statement {
+                search_string         = "/auth/signin"
+                positional_constraint = "EXACTLY"
+                field_to_match {
+                  uri_path {}
+                }
+                text_transformation {
+                  priority = 0
+                  type     = "LOWERCASE"
+                }
+              }
             }
-            text_transformation {
-              priority = 0
-              type     = "LOWERCASE"
+            statement {
+              byte_match_statement {
+                search_string         = "/auth/signup"
+                positional_constraint = "EXACTLY"
+                field_to_match {
+                  uri_path {}
+                }
+                text_transformation {
+                  priority = 0
+                  type     = "LOWERCASE"
+                }
+              }
             }
           }
         }

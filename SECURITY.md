@@ -12,7 +12,7 @@ Please do not open a public issue. Report vulnerabilities privately through GitH
 | Authorization | Every appointment query is scoped to the signed-in patient; records owned by others return `404` |
 | Passwords | argon2id hashing; minimum length 12; plaintext never stored or returned |
 | Sessions | 256-bit random tokens; only a SHA-256 digest is stored; 8-hour expiry; revoked on sign-out |
-| Sign-in | Identical error for unknown email and wrong password, to prevent account enumeration |
+| Sign-in | Identical `401` for unknown email and wrong password, and each performs one argon2 verification; this removes the large timing difference, though response times are not guaranteed identical |
 | Sign-in throttling | Failed sign-ins limited per account (5) and per client (20) in a 15-minute window; further attempts return `429` |
 | Input validation | Strict typing, length limits and rejection of unknown fields on every request body |
 | Data integrity | Foreign keys enforced; `UNIQUE(slot_id)` prevents double booking, including under concurrent requests |
@@ -39,6 +39,7 @@ Each control is mapped to NIST SP 800-53 with its evidence in [docs/controls.md]
 | MB-005 | Low | Slots whose time had passed were listed and could be booked. Found in external review. | **Fixed.** Past slots are not listed; booking one returns `409`. Tests added. |
 | MB-006 | Medium | Slow statements (over 1 s) were logged with their bind parameters, which can include emails and password hashes; PostgreSQL logs them in full by default. Found in external review. | **Fixed.** `log_parameter_max_length` and `log_parameter_max_length_on_error` set to `0` in the parameter group; to be checked against live RDS logs with synthetic data in the next deployment. |
 | MB-007 | Low | The destructive-SQL alarm matched `DROP TABLE` and `drop table` only; CloudWatch patterns are case-sensitive, so `DrOp TaBlE` was missed. Detection only: the API's role cannot drop tables. Found in external review. | **Fixed.** An event trigger raises the same `DESTRUCTIVE_SQL` warning for every dropped table, however it is spelled, and refused attempts match on the server's own error text. Tests cover case and whitespace variants. |
+| MB-008 | Medium | Sign-in skipped password verification for unknown emails, so an unknown email answered measurably faster than a wrong password despite the identical `401`. Sign-up answers `409 Email already registered`, which confirms an account exists. Found in external review, 2026-10-09. | **Sign-in fixed:** unknown emails are verified against a dummy argon2 hash; test added. **Sign-up accepted for now:** the `409` stays, because without an email service there is no other way to tell a returning patient their account exists; sign-up is now rate limited per IP in AWS WAF with sign-in. Planned: confirm-by-email sign-up that answers the same way for new and existing emails. |
 
 ## Limitations
 
