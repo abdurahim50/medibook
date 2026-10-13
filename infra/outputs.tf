@@ -46,3 +46,8 @@ output "migrate_task_definition" {
   description = "Task definition family of the one-off migration task."
   value       = local.deploy ? aws_ecs_task_definition.migrate[0].family : null
 }
+
+output "alert_topic_arn" {
+  description = "SNS topic the alarms notify; checked by scripts/check-alerting.sh."
+  value       = aws_sns_topic.alerts.arn
+}

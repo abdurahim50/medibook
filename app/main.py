@@ -1,6 +1,8 @@
 """MediBook API routes."""
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+import os
+from contextlib import asynccontextmanager, suppress
 
 import psycopg
 from psycopg.errors import UniqueViolation
@@ -29,7 +31,13 @@ async def lifespan(app: FastAPI):
     # No schema changes here: the API's database role cannot run DDL (finding F-8).
     # The schema is created by `python -m app.seed`, run as the database owner.
     app.state.signin_limiter = SigninLimiter()
+    interval = float(os.environ.get("MEDIBOOK_READINESS_PROBE_SECONDS", "60"))
+    probe = asyncio.create_task(probe_readiness(interval)) if interval > 0 else None
     yield
+    if probe:
+        probe.cancel()
+        with suppress(asyncio.CancelledError):
+            await probe
 
 
 app = FastAPI(title="MediBook", version="0.1.0", lifespan=lifespan)
@@ -124,15 +132,35 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/ready")
-def ready():
-    """Readiness: the API can reach the database. 503 without details when it cannot."""
+def database_ready() -> bool:
     try:
         with get_connection() as conn:
             conn.execute("SELECT 1")
     except psycopg.Error as exc:
         # Log the error class only: connection errors can include host names.
         logger.warning("readiness check failed: %s", type(exc).__name__)
+        return False
+    return True
+
+
+async def probe_readiness(interval: float) -> None:
+    """Check the database on a schedule, with or without traffic (F-12).
+
+    Failures log the same line as /ready, so the database-unreachable alarm sees
+    an outage even when no one is calling the API.
+    """
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await asyncio.to_thread(database_ready)
+        except Exception as exc:  # e.g. no AWS credentials for the IAM token: keep probing
+            logger.warning("readiness check failed: %s", type(exc).__name__)
+
+
+@app.get("/ready")
+def ready():
+    """Readiness: the API can reach the database. 503 without details when it cannot."""
+    if not database_ready():
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "unavailable"},

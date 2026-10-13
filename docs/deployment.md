@@ -157,11 +157,15 @@ aws ecs describe-tasks --cluster "$(terraform output -raw ecs_cluster)" --tasks 
 # 5. Check it
 curl -s "$(terraform output -raw api_url)/health"
 curl -s "$(terraform output -raw api_url)/ready"
+
+# 6. Alerting: each new environment has a new, unconfirmed SNS subscription and
+#    alarms reach no one until it is confirmed (F-13). Click "Confirm subscription"
+#    in the AWS Notifications email; the check waits up to 10 minutes, then
+#    publishes a test notification. Confirm the test email arrives.
+../scripts/check-alerting.sh --test
 ```
 
 The demo password, when needed: `aws ssm get-parameter --name /medibook/dev/seed-password --with-decryption --query Parameter.Value --output text`.
-
-After the first apply, confirm the SNS subscription email so alarms are delivered.
 
 **If requests time out:** your public IP has probably changed. Update `allowed_cidrs` in `terraform.tfvars`, then plan and apply.
 
