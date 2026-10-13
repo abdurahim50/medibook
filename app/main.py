@@ -6,6 +6,7 @@ import psycopg
 from psycopg.errors import UniqueViolation
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -34,6 +35,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MediBook", version="0.1.0", lifespan=lifespan)
 bearer = HTTPBearer(auto_error=False)
 logger = logging.getLogger("medibook.api")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    """422 naming the field and the rule it broke, never the value submitted (MB-009).
+
+    FastAPI's default response echoes each rejected value, so a password that is
+    too short or too long would come back in the response body.
+    """
+    errors = [{"type": e["type"], "loc": e["loc"], "msg": e["msg"]} for e in exc.errors()]
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": errors})
 
 
 @app.middleware("http")

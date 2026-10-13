@@ -26,3 +26,15 @@ The reviewer confirmed all six fixes above and CI green on 67 tests, then raised
 | R-7 | README `pg_isready` without `-h` can succeed against the temporary init server on the Unix socket, before TCP is up | PostgreSQL container start-up runs an init server on the socket only | `-h 127.0.0.1` on both checks ([`README.md`](../../../README.md)) | n/a |
 | R-8 | The database-unreachable threshold (3 a minute) can never be reached by a once-a-minute synthetic check, and low real traffic might not reach it either | Arithmetic; MediBook's traffic is low | Threshold lowered to at least 1 failure in each of 2 consecutive minutes; still ignores a single slow first sign-in (F-11) ([`infra/monitoring.tf`](../../../infra/monitoring.tf), [`docs/runbook.md`](../../runbook.md)) | n/a |
 | R-9 | `pydantic_core` pinned separately from `pydantic`, so Dependabot proposed an incompatible pair (PR #29, blocked by CI) | `pip` refused: `pydantic==2.13.5` requires an exact `pydantic_core` | Separate pin removed; `pydantic` brings its exact core. PR #29 closed. Then (2026-10-12) `pip-tools`: direct dependencies in `requirements.in`, hashed locks generated from it, installed with `--require-hashes --no-deps`; two unused pins (`certifi`, `packaging`) dropped as a result ([`requirements.txt`](../../../requirements.txt)) | CI dependency install |
+
+## Third round (commit `9b8c2c6`)
+
+The reviewer confirmed the second-round fixes, CI green on 68 tests and the AWS evidence, repeated three open items, and raised two new findings. Both were reproduced before fixing.
+
+| # | Finding | Verified how | Fix | Test |
+| --- | --- | --- | --- | --- |
+| MB-009 | `422` responses echo the submitted value, including a rejected password | `POST /auth/signup` with an 11-character password returned it under `detail[].input`; a body missing `email` returned the whole body, password included | A validation handler returns only `type`, `loc` and `msg` ([`app/main.py`](../../../app/main.py)) | [`tests/test_api.py`](../../../tests/test_api.py): five rejected bodies, none echoed |
+| MB-010 | Throttle entries for keys never seen again are never removed | 1,000 keys recorded, clock moved past the window, an unrelated key checked: all 1,000 remained | Keys ordered by latest failure, expired ones removed on every write; 100,000-key cap per limiter, longest-idle evicted, warning logged ([`app/ratelimit.py`](../../../app/ratelimit.py)) | [`tests/test_ratelimit.py`](../../../tests/test_ratelimit.py): expiry and cap |
+| F-13 | Alarm notifications not delivered in the AWS verification | Already recorded | Open: deployment check for unconfirmed subscriptions | n/a |
+| F-12 | Idle database outages undetected without a scheduled readiness probe | Already recorded | Open | n/a |
+| F-8 | Migration task with command overrides still runs as the database owner | Already recorded | Open | n/a |

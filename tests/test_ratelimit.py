@@ -72,3 +72,38 @@ def test_limit_expires_after_the_window():
 
     now[0] = WINDOW_SECONDS
     assert limiter.retry_after("key") == 0
+
+
+def test_expired_keys_are_removed_when_any_failure_is_recorded():
+    """MB-010: 1,000 one-off keys do not stay in memory after the window."""
+    now = [0.0]
+    limiter = FailureLimiter(max_failures=5, window_seconds=WINDOW_SECONDS, clock=lambda: now[0])
+    for i in range(1000):
+        limiter.record_failure(f"key-{i}")
+    assert len(limiter) == 1000
+
+    now[0] = WINDOW_SECONDS + 1
+    limiter.record_failure("unrelated")
+    assert len(limiter) == 1
+
+
+def test_key_count_is_bounded_and_the_longest_idle_key_goes_first(caplog):
+    now = [0.0]
+    limiter = FailureLimiter(max_failures=2, window_seconds=WINDOW_SECONDS, clock=lambda: now[0], max_keys=3)
+    limiter.record_failure("victim")
+    limiter.record_failure("victim")
+    for key in ("a", "b"):
+        now[0] += 1
+        limiter.record_failure(key)
+    now[0] += 1
+    limiter.record_failure("victim")  # renewed: no longer the longest idle
+
+    with caplog.at_level(logging.WARNING, logger="medibook.ratelimit"):
+        for key in ("c", "d"):
+            now[0] += 1
+            limiter.record_failure(key)
+
+    assert len(limiter) == 3
+    assert limiter.retry_after("a") == 0 and limiter.retry_after("b") == 0  # evicted
+    assert limiter.retry_after("victim") > 0                               # still blocked
+    assert [r.getMessage() for r in caplog.records] == ["sign-in limiter at capacity: 3 keys"]

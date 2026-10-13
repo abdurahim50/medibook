@@ -184,6 +184,29 @@ def test_short_password_is_rejected(client):
     )
     assert response.status_code == 422
 
+
+SUBMITTED = "Rejected-Input-Value"
+
+
+@pytest.mark.parametrize(
+    "path, body",
+    [
+        ("/auth/signup", {"full_name": "Alex", "email": "alex@example.com", "password": SUBMITTED[:11]}),
+        ("/auth/signin", {"email": "alex@example.com", "password": SUBMITTED * 10}),
+        ("/auth/signin", {"password": SUBMITTED}),                       # missing field: whole body
+        ("/auth/signin", {"email": "not-an-email", "password": SUBMITTED}),
+        ("/auth/signup", {"full_name": "Alex", "email": "alex@example.com", "password": SUBMITTED * 2,
+                          "role": SUBMITTED}),                            # unknown field
+    ],
+)
+def test_validation_errors_never_echo_submitted_values(client, path, body):
+    """MB-009: the 422 names the field and rule, not the password or other input."""
+    response = client.post(path, json=body)
+    assert response.status_code == 422
+    assert SUBMITTED[:11] not in response.text
+    for error in response.json()["detail"]:
+        assert set(error) == {"type", "loc", "msg"}
+
 # ---------- Access control (TM-01 / MB-001) ----------
 
 def test_patient_can_read_own_appointment(client):
