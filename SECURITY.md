@@ -48,6 +48,6 @@ Each control is mapped to NIST SP 800-53 with its evidence in [docs/controls.md]
 - The dev database is a single-AZ RDS instance deleted with the environment; production needs Multi-AZ and deletion protection.
 - Anyone allowed to run the migration task with a command override has the database owner's rights; limiting this to a break-glass role is planned (finding F-8).
 - Sign-in throttling is held in memory per container; the shared control across containers is the edge rate limit. A throttle can be triggered on another patient's account for up to 15 minutes.
-- Audit events go to CloudWatch Logs (7-day retention in dev). Alarms fire on 5 or more denied requests in 5 minutes and on `DROP` or `TRUNCATE` in the database log, and when the API cannot reach the database (needs traffic or calls to `/ready`, F-12).
+- Audit events go to CloudWatch Logs (7-day retention in dev). Alarms fire on 5 or more denied requests in 5 minutes and on `DROP` or `TRUNCATE` in the database log, and when the API cannot reach the database (each task checks once a minute, with or without traffic, F-12). Alarms notify an SNS email subscription that must be confirmed after each new deployment; `scripts/check-alerting.sh` fails until it is (F-13).
 - Unfixed operating-system CVEs in the base image are triaged in [docs/vulnerability-exceptions.md](docs/vulnerability-exceptions.md).
 - Email format is checked with a pattern, not verified by confirmation email.

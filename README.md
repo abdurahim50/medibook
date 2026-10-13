@@ -293,7 +293,8 @@ SECURITY.md    security controls, known issues, reporting
 - The admin database credentials are injected into the migration task, and anyone allowed to run ECS tasks with a command override can use them; limiting `ecs:RunTask` to a break-glass role and running migrations from CI are planned (finding F-8, partly fixed: the API uses a row-access-only role).
 - Ordinary `DELETE` statements raise no alarm (only `DROP` and `TRUNCATE` do), and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
 - Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
-- The database-unreachable alarm depends on traffic or calls to `/ready`; with no requests a database outage goes unnoticed until the next request (F-12). Production adds a synthetic check.
+- The database check behind the database-unreachable alarm runs inside each API task (F-12), so it cannot see an outage of the API itself; the no-healthy-targets alarm covers that. An external check from outside AWS is a production addition.
+- Alarm emails go to an SNS subscription that must be confirmed after every new deployment (F-13); the deployment steps check it. Production uses a destination that needs no confirmation click.
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).
 

@@ -3,6 +3,8 @@
 Each test starts from empty tables in the PostgreSQL test database (see
 tests/conftest.py), so tests never depend on each other.
 """
+import logging
+import time
 from datetime import datetime, timezone
 
 import psycopg
@@ -76,6 +78,49 @@ def test_ready_returns_503_without_details_when_database_is_down(client, monkeyp
     assert response.status_code == 503
     assert response.json() == {"status": "unavailable"}
     assert "db.internal" not in response.text
+
+
+def test_scheduled_probe_logs_outage_without_any_requests(monkeypatch, caplog):
+    """F-12: an idle API still logs the line the database-unreachable alarm counts."""
+    from app.main import app
+
+    def database_down():
+        raise psycopg.OperationalError("connection to server at db.internal failed")
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
+    monkeypatch.setattr("app.main.get_connection", database_down)
+    with caplog.at_level(logging.WARNING, logger="medibook.api"), TestClient(app):
+        time.sleep(0.5)  # no requests sent
+    failures = [r.getMessage() for r in caplog.records if r.name == "medibook.api"]
+    assert len(failures) >= 2
+    assert set(failures) == {"readiness check failed: OperationalError"}
+
+
+def test_scheduled_probe_keeps_running_after_an_unexpected_error(monkeypatch, caplog):
+    from app.main import app
+
+    def no_credentials():
+        raise RuntimeError("Unable to locate credentials")
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
+    monkeypatch.setattr("app.main.get_connection", no_credentials)
+    with caplog.at_level(logging.WARNING, logger="medibook.api"), TestClient(app):
+        time.sleep(0.5)
+    failures = [r.getMessage() for r in caplog.records if r.name == "medibook.api"]
+    assert len(failures) >= 2
+    assert set(failures) == {"readiness check failed: RuntimeError"}
+
+
+def test_scheduled_probe_can_be_turned_off(monkeypatch):
+    from app.main import app
+
+    def no_database():
+        raise AssertionError("the probe must not run when disabled")
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0")
+    monkeypatch.setattr("app.main.get_connection", no_database)
+    with TestClient(app):
+        time.sleep(0.2)
 
 
 # ---------- Authentication ----------
