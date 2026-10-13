@@ -31,8 +31,8 @@ Times are UTC. Account ID, endpoint and personal IP address are redacted.
 
 ## Still open
 
-- F-13: alarms are silent until the email subscription is confirmed. Add a deployment check that fails while any subscription is `PendingConfirmation`, and in production subscribe a destination that needs no confirmation click (a chat or paging integration).
-- F-12: synthetic `/ready` check.
+- F-13: alarms are silent until the email subscription is confirmed. Add a deployment check that fails while any subscription is `PendingConfirmation`, and in production subscribe a destination that needs no confirmation click (a chat or paging integration). **Fixed and verified 2026-10-13** ([verification](aws-verification-2026-10-13.md)).
+- F-12: synthetic `/ready` check. **Fixed with a scheduled check in each API task and verified 2026-10-13** ([verification](aws-verification-2026-10-13.md)).
 - F-8: `ecs:RunTask` with command overrides limited to a break-glass role.
 - F-7: alert on mass `DELETE` (row counts).
 - MB-008: sign-up still answers `409` for a registered email until confirm-by-email sign-up exists.
