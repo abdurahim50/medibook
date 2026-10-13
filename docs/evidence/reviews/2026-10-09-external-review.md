@@ -38,3 +38,14 @@ The reviewer confirmed the second-round fixes, CI green on 68 tests and the AWS 
 | F-13 | Alarm notifications not delivered in the AWS verification | Already recorded | [`scripts/check-alerting.sh`](../../../scripts/check-alerting.sh), a deployment step: fails until a subscription is confirmed, then publishes a test notification ([deployment](../../deployment.md)) | Next deployment |
 | F-12 | Idle database outages undetected without a scheduled readiness probe | Already recorded | Each API task checks the database every 60 s and logs the line the alarm counts ([`app/main.py`](../../../app/main.py)) | [`tests/test_api.py`](../../../tests/test_api.py): outage logged with no requests; next deployment: revoke database access with no traffic |
 | F-8 | Migration task with command overrides still runs as the database owner | Already recorded | Open | n/a |
+
+## Fourth round (commit `5d378f2`)
+
+The reviewer confirmed MB-009, MB-010, F-12 and F-13 with no blocking defect, and raised two small points.
+
+| # | Finding | Fix | Test |
+| --- | --- | --- | --- |
+| R-10 | The probe slept a full interval after each check, so a 10 s check gave a 70 s gap | Checks run on a fixed schedule from start-up; an overrun slot is skipped, not made up ([`app/main.py`](../../../app/main.py)) | [`tests/test_api.py`](../../../tests/test_api.py): 0.08 s checks at a 0.1 s interval keep 0.1 s spacing |
+| R-11 | `MEDIBOOK_READINESS_PROBE_SECONDS` missing from [`.env.example`](../../../.env.example) | Added with its default and `0` to turn it off | n/a |
+
+**Still to show in AWS:** an idle database outage raising the CloudWatch alarm and a delivered notification. The reviewer noted that `check-alerting.sh --test` publishes to SNS directly, so it proves the subscription but not CloudWatch's path to the topic; the F-12 test at the next deployment covers both.

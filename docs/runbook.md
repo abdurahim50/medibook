@@ -140,7 +140,7 @@ aws logs tail $LOG_GROUP --since 15m | grep -E "readiness check failed|Operation
 | RDS `available`, `PAM authentication failed` in the database log | IAM sign-in refused: task role policy, `rds_iam` grant, or IAM authentication off after a restore | Check `aws_iam_role_policy.api_task`; re-run the migration task; restore with `--enable-iam-database-authentication` |
 | RDS `available`, `role "medibook_app" does not exist` | Migration not run on this database | Run the migration task (docs/deployment.md, step 4) |
 
-**Coverage:** each API task checks the database once a minute (`MEDIBOOK_READINESS_PROBE_SECONDS`, default 60) and logs the same line as `/ready`, so an outage alarms with no traffic (F-12). Expect a short ALARM then OK right after a fresh deployment if the migration has not run within two minutes of the tasks starting: until then the application role does not exist. A single failure (such as the slow first IAM sign-in after a deploy, F-11) does not alarm, because two minutes in a row are needed.
+**Coverage:** each API task checks the database on a fixed one-minute schedule (`MEDIBOOK_READINESS_PROBE_SECONDS`, default 60; a slow check does not delay the next) and logs the same line as `/ready`, so an outage alarms with no traffic (F-12). Expect a short ALARM then OK right after a fresh deployment if the migration has not run within two minutes of the tasks starting: until then the application role does not exist. A single failure (such as the slow first IAM sign-in after a deploy, F-11) does not alarm, because two minutes in a row are needed.
 
 ---
 

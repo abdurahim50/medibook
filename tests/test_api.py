@@ -123,6 +123,27 @@ def test_scheduled_probe_can_be_turned_off(monkeypatch):
         time.sleep(0.2)
 
 
+def test_slow_checks_do_not_stretch_the_probe_schedule(monkeypatch):
+    """Checks start every interval, not interval plus check time: 0.08 s checks at a
+    0.1 s interval give about 10 checks a second, not about 5."""
+    from app.main import app
+
+    starts = []
+
+    def slow_database_down():
+        starts.append(time.monotonic())
+        time.sleep(0.08)
+        raise psycopg.OperationalError("down")
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.1")
+    monkeypatch.setattr("app.main.get_connection", slow_database_down)
+    with TestClient(app):
+        time.sleep(1.05)
+    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    assert len(starts) >= 8
+    assert max(gaps) < 0.15
+
+
 # ---------- Authentication ----------
 
 def test_signup_does_not_return_password_or_hash(client):
