@@ -8,7 +8,7 @@ resource "aws_ecs_cluster" "main" {
 
   setting {
     name  = "containerInsights"
-    value = "enabled" # service task counts for the F-16 candidate alarm; billed per metric-hour
+    value = "disabled" # enable for production; it adds cost
   }
 }
 
