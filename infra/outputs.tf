@@ -39,7 +39,7 @@ output "db_secret_arn" {
 
 output "migrate_network" {
   description = "Network configuration for running the migration task (aws ecs run-task --network-configuration)."
-  value       = "awsvpcConfiguration={subnets=[${join(",", aws_subnet.public[*].id)}],securityGroups=[${aws_security_group.task.id}],assignPublicIp=ENABLED}"
+  value       = aws_ssm_parameter.migrate_network.value
 }
 
 output "migrate_task_definition" {

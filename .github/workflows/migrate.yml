@@ -1,0 +1,68 @@
+name: Migrate database
+
+# Runs the one-off migration task (python -m app.seed) after a deployment: schema,
+# the medibook_app role and its grants, demo data. It is the only routine way to
+# use the database admin credentials (F-8).
+#
+# The job runs in the migrate-dev GitHub environment, which requires a reviewer's
+# approval and allows main only. Only jobs in that environment can assume the AWS
+# migration role, and that role can start this one task definition and nothing
+# else (infra/bootstrap). The task runs as defined: no command override.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC token, exchanged for the AWS migration role
+
+concurrency:
+  group: migrate-dev
+  cancel-in-progress: false # never interrupt a running migration
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER: medibook-dev
+  TASK_DEFINITION: medibook-dev-migrate
+  NETWORK_PARAMETER: /medibook/dev/migrate/network
+
+jobs:
+  migrate:
+    name: Run migration task
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: migrate-dev
+    steps:
+      - name: Assume AWS migration role
+        env:
+          ROLE_ARN: ${{ vars.AWS_MIGRATE_ROLE_ARN }}
+        run: |
+          test -n "$ROLE_ARN" || { echo "Environment variable AWS_MIGRATE_ROLE_ARN is not set"; exit 1; }
+          TOKEN=$(curl -sSf -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
+          echo "::add-mask::${TOKEN}"
+          CREDS=$(aws sts assume-role-with-web-identity --role-arn "$ROLE_ARN" \
+            --role-session-name "github-migrate-${GITHUB_RUN_ID}" --web-identity-token "$TOKEN" \
+            --duration-seconds 3600 --query Credentials --output json)
+          for pair in AWS_ACCESS_KEY_ID:AccessKeyId AWS_SECRET_ACCESS_KEY:SecretAccessKey AWS_SESSION_TOKEN:SessionToken; do
+            value=$(echo "$CREDS" | jq -r ".${pair#*:}")
+            echo "::add-mask::${value}"
+            echo "${pair%%:*}=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Run migration and wait for it
+        run: |
+          NETWORK=$(aws ssm get-parameter --name "$NETWORK_PARAMETER" --query Parameter.Value --output text)
+          TASK=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_DEFINITION" \
+            --launch-type FARGATE --network-configuration "$NETWORK" \
+            --started-by "github-${GITHUB_RUN_ID}" --query 'tasks[0].taskArn' --output text)
+          test -n "$TASK" && test "$TASK" != "None" || { echo "Task did not start"; exit 1; }
+          echo "Started ${TASK##*/}"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+          CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          echo "Exit code: $CODE"
+          # Migration log lines only; they contain no secrets.
+          aws logs filter-log-events --log-group-name "/medibook/dev/api" \
+            --log-stream-name-prefix "migrate/migrate/${TASK##*/}" \
+            --query 'events[].message' --output text || true
+          test "$CODE" = "0"

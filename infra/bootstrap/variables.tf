@@ -62,3 +62,15 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = false
 }
+
+variable "environment" {
+  description = "Environment whose migration task the migration role may run (the environment stack's var.environment)."
+  type        = string
+  default     = "dev"
+}
+
+variable "migrate_github_environment" {
+  description = "GitHub environment the migration workflow runs in. Its protection rules (required reviewer, main only) are part of the control (F-8)."
+  type        = string
+  default     = "migrate-dev"
+}

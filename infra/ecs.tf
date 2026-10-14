@@ -121,8 +121,9 @@ resource "aws_ecs_task_definition" "api" {
 
 # ---------- Migration: one-off task with the admin credentials ----------
 # Creates the schema, the medibook_app role and its grants, and the seed data.
-# Run once after each deploy (docs/deployment.md); it exits when done. It is the
-# only task definition that receives the admin credentials.
+# Run once after each deploy, from the "Migrate database" workflow
+# (docs/deployment.md); it exits when done. It is the only task definition that
+# receives the admin credentials, through its own execution role (F-8).
 
 resource "aws_ecs_task_definition" "migrate" {
   count = local.deploy ? 1 : 0
@@ -132,7 +133,7 @@ resource "aws_ecs_task_definition" "migrate" {
   network_mode             = "awsvpc"
   cpu                      = 256
   memory                   = 512
-  execution_role_arn       = aws_iam_role.execution.arn
+  execution_role_arn       = aws_iam_role.migrate_execution.arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -214,4 +215,12 @@ resource "aws_ecs_service" "api" {
   health_check_grace_period_seconds = 30
 
   depends_on = [aws_lb_listener.http]
+}
+
+# Where the migration workflow runs the task. Read by the GitHub migration role,
+# which has no access to Terraform state (F-8). Not a secret.
+resource "aws_ssm_parameter" "migrate_network" {
+  name  = "/${var.project}/${var.environment}/migrate/network"
+  type  = "String"
+  value = "awsvpcConfiguration={subnets=[${join(",", aws_subnet.public[*].id)}],securityGroups=[${aws_security_group.task.id}],assignPublicIp=ENABLED}"
 }

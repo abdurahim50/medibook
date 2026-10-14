@@ -217,3 +217,100 @@ resource "aws_iam_role_policy" "plan" {
   role   = aws_iam_role.plan.id
   policy = data.aws_iam_policy_document.plan.json
 }
+
+# ---------- Migration role assumed by GitHub Actions (F-8) ----------
+# The "Migrate database" workflow runs the one-off migration task through this
+# role. It can start that task definition in that cluster, pass that task's
+# execution role and nothing else: no other task definitions, no secrets, no
+# Terraform state. Only jobs in the GitHub environment named below can assume
+# it; that environment requires a reviewer's approval and allows main only, so
+# what runs is the workflow as merged after review.
+#
+# What it does not stop: a run-task call through this role may still override
+# the container command (ECS offers no IAM condition on overrides). The workflow
+# is the only holder of the role and passes no override; changing it needs a
+# reviewed pull request. Human administrators are outside this control.
+
+locals {
+  env_name                = "${var.project}-${var.environment}"
+  migrate_task_definition = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:task-definition/${local.env_name}-migrate:*"
+  env_cluster_arn         = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:cluster/${local.env_name}"
+}
+
+data "aws_iam_policy_document" "migrate_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_provider_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    # A job that names a GitHub environment gets that environment, not the
+    # branch, in its subject. Which branches may use it is enforced by the
+    # environment's deployment branch policy.
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["${local.github_subject_prefix}:environment:${var.migrate_github_environment}"]
+    }
+  }
+}
+
+resource "aws_iam_role" "migrate" {
+  name                 = "${var.project}-github-migrate"
+  description          = "Assumed by the GitHub migration workflow to run the one-off migration task in ${local.env_name}"
+  assume_role_policy   = data.aws_iam_policy_document.migrate_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "migrate" {
+  statement {
+    sid       = "RunMigrationTask"
+    actions   = ["ecs:RunTask"]
+    resources = [local.migrate_task_definition]
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [local.env_cluster_arn]
+    }
+  }
+
+  statement {
+    sid       = "PassMigrationExecutionRole"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.env_name}-migrate-execution"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "WatchMigrationTask"
+    actions   = ["ecs:DescribeTasks"]
+    resources = ["arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:task/${local.env_name}/*"]
+  }
+
+  statement {
+    sid       = "ReadMigrationNetwork"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}/${var.environment}/migrate/network"]
+  }
+
+  statement {
+    sid       = "ReadMigrationLogs"
+    actions   = ["logs:FilterLogEvents"]
+    resources = ["arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/${var.project}/${var.environment}/api:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "migrate" {
+  name   = "run-migration"
+  role   = aws_iam_role.migrate.id
+  policy = data.aws_iam_policy_document.migrate.json
+}

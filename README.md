@@ -290,7 +290,7 @@ SECURITY.md    security controls, known issues, reporting
 - Sign-in throttling and audit logs are per container; see [SECURITY.md](SECURITY.md). Known issues found in reviews and their fixes are listed there.
 - Staff and admin workflows, cancellation, rescheduling, payments and AI intake are not implemented.
 - The dev database is a single-AZ RDS instance that is deleted with the environment after each session; production needs Multi-AZ, deletion protection and a final snapshot.
-- The admin database credentials are injected into the migration task, and anyone allowed to run ECS tasks with a command override can use them; limiting `ecs:RunTask` to a break-glass role and running migrations from CI are planned (finding F-8, partly fixed: the API uses a row-access-only role).
+- The admin database credentials reach only the migration task, which runs from an approved GitHub workflow whose AWS role can start that task and nothing else (F-8). An AWS administrator can still bypass this; production would separate administrators from the workload account.
 - Ordinary `DELETE` statements raise no alarm (only `DROP` and `TRUNCATE` do), and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
 - Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
 - The database check behind the database-unreachable alarm runs inside each API task (F-12), so it cannot see an outage of the API itself; the no-healthy-targets alarm covers that. An external check from outside AWS is a production addition.
