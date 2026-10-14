@@ -294,6 +294,7 @@ SECURITY.md    security controls, known issues, reporting
 - Ordinary `DELETE` statements raise no alarm (only `DROP` and `TRUNCATE` do), and restoring the database is a manual runbook procedure outside Terraform (findings F-7 and F-10).
 - Each request opens a new database connection; connection pooling is planned (finding F-5 in the [recovery drills](docs/evidence/deployment/recovery-drills.md)).
 - The database check behind the database-unreachable alarm runs inside each API task (F-12), so it cannot see an outage of the API itself; the no-healthy-targets alarm covers that. An external check from outside AWS is a production addition.
+- Each fresh deployment raises a false database-unreachable alarm until the approved migration runs (F-15), and a total API outage takes about 9 minutes to alarm (F-16); both are open.
 - Alarm emails go to an SNS subscription that must be confirmed after every new deployment (F-13); the deployment steps check it. Production uses a destination that needs no confirmation click.
 - CI publishes signed images, but deployment is run with Terraform from a workstation. Signature verification and policy checks run on every pull request and in every deployment plan.
 - The dev load balancer serves HTTP only, restricted to allowed addresses; HTTPS is required before real data (see [docs/controls.md](docs/controls.md)).

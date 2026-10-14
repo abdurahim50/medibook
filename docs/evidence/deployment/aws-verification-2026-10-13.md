@@ -32,8 +32,8 @@ Times are UTC on 13 October (21:00 to 21:45 on 12 October in Chicago). Account I
 
 ## Still open
 
-- F-14: fixed in code; verify at the next deployment that no ALARM email arrives during the deploy and that scaling the service to 0 still alerts.
-- F-8: `ecs:RunTask` with command overrides limited to a break-glass role.
+- F-14: fixed in code; verify at the next deployment that no ALARM email arrives during the deploy and that scaling the service to 0 still alerts. **Verified 2026-10-14** ([verification](aws-verification-2026-10-14.md)); the outage alarm took 8 min 49 s (F-16).
+- F-8: `ecs:RunTask` with command overrides limited to a break-glass role. **Fixed in PR #41 and verified 2026-10-14** ([verification](aws-verification-2026-10-14.md)), within the limits IAM allows.
 - F-7: alert on mass `DELETE` (row counts).
 - MB-008: sign-up still answers `409` for a registered email until confirm-by-email sign-up exists.
 - The database check runs inside the API task; an outage of the API itself is covered by the no-healthy-targets alarm, not by this check.
