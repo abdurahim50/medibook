@@ -2,8 +2,6 @@
 
 [![CI](https://github.com/abdurahim50/medibook/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/abdurahim50/medibook/actions/workflows/ci.yml)
 [![Release](https://github.com/abdurahim50/medibook/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/abdurahim50/medibook/actions/workflows/release.yml)
-[![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](#application-stack)
-[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](#application-stack)
 [![Synthetic data only](https://img.shields.io/badge/Data-synthetic%20only-orange)](docs/brief.md#assumptions)
 
 Appointment booking API for outpatient clinics. Patients create an account, browse open appointment slots, book a visit and view their own bookings.
@@ -13,6 +11,12 @@ The current release provides the patient booking API. Staff tools and an AI-assi
 > **Data notice:** this environment runs on synthetic data only. It holds no real patient information and is not intended for clinical use.
 
 Latest verified deployment: [round 6, 2026-10-14](docs/evidence/deployment/aws-verification-2026-10-14-round6.md). All 145 local tests and all 12 PR checks passed; the approved migration, API readiness, alert delivery, outage detection and recovery were verified. The dev deployment was removed after the session. CI and Release badges show workflow status on `main`, not whether an AWS service is running.
+
+## Why I Built This
+
+I built MediBook as a CyberAgoge portfolio project to practise securing an application through its full delivery cycle. Appointment booking gave me concrete problems to solve: keeping each patient's bookings private, preventing double booking, and recovering when a dependency fails.
+
+My goal was to connect application security, cloud infrastructure and operations in one project, with tests and deployment evidence I could explain. All patient data is synthetic, and the project is a learning environment.
 
 ## Patient workflow
 
@@ -50,7 +54,7 @@ Target production architecture on AWS. Edit `diagrams/architecture.drawio.png` i
 | Delivery | GitHub Actions runs tests and security scans, then signs and publishes images through OIDC; workstation Terraform verifies and deploys the image digest; a protected GitHub workflow runs migrations |
 | Operations | CloudWatch logs, metrics and alarms; CloudTrail and GuardDuty for audit and threat detection |
 
-The dev deployment is a cost-reduced slice of this design: see [docs/deployment.md](docs/deployment.md). A hop-by-hop walkthrough of the delivery and request paths is in [docs/architecture.md](docs/architecture.md). Remaining gaps are on the [roadmap](#roadmap).
+The dev deployment is a cost-reduced slice of this design: see [docs/deployment.md](docs/deployment.md). **[Implemented architecture and deployment flow](docs/architecture.md)** contains the existing Mermaid delivery and request diagrams, plus a comparison of the dev environment and production target. Remaining gaps are on the [roadmap](#roadmap).
 
 ### Application stack
 
@@ -66,6 +70,36 @@ The dev deployment is a cost-reduced slice of this design: see [docs/deployment.
 | Container | Docker, `python:3.14-slim` pinned by digest | Multi-stage image, non-root user, read-only root filesystem |
 | CI | GitHub Actions | Tests, SAST, dependency, secret and image scans, policy tests and an authenticated OWASP ZAP scan on every pull request |
 | Release | GitHub Actions, GitHub OIDC, Syft, Cosign | Builds and pushes the image to ECR without stored AWS keys; CycloneDX SBOM; keyless signature and SBOM attestation |
+
+### Technologies used
+
+**Application**
+
+[![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](#application-stack)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](#application-stack)
+[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](#application-stack)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](Dockerfile)
+
+**AWS and infrastructure**
+
+[![AWS](https://img.shields.io/badge/AWS-FF9900?style=for-the-badge)](docs/deployment.md)
+[![ECS Fargate](https://img.shields.io/badge/ECS_Fargate-FF9900?style=for-the-badge)](infra/ecs.tf)
+[![Amazon RDS](https://img.shields.io/badge/Amazon_RDS-527FFF?style=for-the-badge)](infra/database.tf)
+[![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white)](infra/)
+[![AWS WAF](https://img.shields.io/badge/AWS_WAF-DD344C?style=for-the-badge)](infra/waf.tf)
+
+**Delivery and security**
+
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
+[![OIDC](https://img.shields.io/badge/OIDC-EB5424?style=for-the-badge&logo=openid&logoColor=white)](.github/workflows/release.yml)
+[![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=for-the-badge)](#continuous-integration)
+[![Semgrep](https://img.shields.io/badge/Semgrep-23C55E?style=for-the-badge)](#continuous-integration)
+[![Gitleaks](https://img.shields.io/badge/Gitleaks-111827?style=for-the-badge)](#continuous-integration)
+[![Cosign](https://img.shields.io/badge/Cosign-4285F4?style=for-the-badge)](#release)
+[![Conftest](https://img.shields.io/badge/Conftest-555555?style=for-the-badge)](policy/README.md)
+[![OWASP ZAP](https://img.shields.io/badge/OWASP_ZAP-00549E?style=for-the-badge)](scripts/dast-scan.sh)
+
+These badges identify technologies used in the project. The CI and Release badges at the top report workflow status.
 
 See the [product brief](docs/brief.md) for users, protected data and scope.
 
@@ -310,6 +344,29 @@ diagrams/
 certs/         RDS certificate authorities for verified TLS (public)
 SECURITY.md    security controls, known issues, reporting
 ```
+
+## Skills demonstrated
+
+| Area | What I implemented | Evidence |
+| --- | --- | --- |
+| Application security | Session-based patient identity, ownership checks, input validation and double-booking protection | [API tests](tests/test_api.py), [threat model](docs/threat-model.md) |
+| Least privilege | RDS IAM authentication for the API and a separate approval-gated migration role | [Database role tests](tests/test_least_privilege.py), [architecture](docs/architecture.md) |
+| Infrastructure as code | Terraform infrastructure and Conftest policies checked before apply | [Policy rules and tests](policy/README.md), [deployment guide](docs/deployment.md) |
+| Software supply chain | Dependency hashes, pinned images and actions, SBOM generation, image signing and plan-time verification | [Release workflow](.github/workflows/release.yml), [verification script](scripts/verify-image-terraform.sh) |
+| Security testing | Automated SAST, dependency, secret, container and authenticated API scans | [CI workflow](.github/workflows/ci.yml), [scan evidence](docs/evidence.md) |
+| Operations and recovery | Database probes, CloudWatch alarms, confirmed SNS delivery, outage and database recovery drills | [Round 6 verification](docs/evidence/deployment/aws-verification-2026-10-14-round6.md), [recovery drills](docs/evidence/deployment/recovery-drills.md) |
+
+## Challenges solved
+
+- **Separating migrations from the API.** I moved schema changes into an approval-gated workflow with a dedicated AWS role, then verified the migration before starting API tasks. [Delivery flow](docs/architecture.md#delivery-path).
+- **Handling database startup failures.** A restartable quiet period could hide a task that never connected. Startup now has no grace by default; an exceptional grace period uses a fixed UTC deadline and ends on first success. [Readiness tests](tests/test_readiness.py).
+- **Detecting an outage when the load balancer stops publishing data.** I tested alarm candidates and retained a filled healthy-host metric. The round 6 drill alarmed 4 min 3 s after scaling began and returned to OK after recovery. This is a measured result from one drill. [Deployment evidence](docs/evidence/deployment/aws-verification-2026-10-14-round6.md).
+
+## What I learned
+
+A healthy endpoint is one part of verification. I also needed to check which identity could run a migration, whether an alert reached its destination, and how the service recovered after failure. Unit tests, policy checks and live drills each answered different questions.
+
+I learned to distinguish configured controls, observed results and remaining gaps. The evidence records what I tested; the limitations below explain where more work is needed before production use.
 
 ## Known limitations
 
