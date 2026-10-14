@@ -118,45 +118,15 @@ resource "aws_cloudwatch_metric_alarm" "denied" {
 resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
   alarm_name          = "${local.name}-api-no-healthy-targets"
   alarm_description   = "No healthy API task behind the load balancer. Patients cannot book. See docs/runbook.md."
-  namespace           = "AWS/ApplicationELB"
-  metric_name         = "HealthyHostCount"
-  statistic           = "Minimum"
-  period              = 60
   evaluation_periods  = 2
   threshold           = 1
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "breaching" # no data from the target group means nothing is serving
 
-  dimensions = {
-    LoadBalancer = aws_lb.api.arn_suffix
-    TargetGroup  = aws_lb_target_group.api.arn_suffix
-  }
-
-  # The base stack has a load balancer but no service yet, so this alarm is in
-  # ALARM until the service apply (F-14). Notifications start with the service:
-  # no false alert during deployment, and a later outage still notifies.
-  actions_enabled = local.deploy
-  alarm_actions   = [aws_sns_topic.alerts.arn]
-  ok_actions      = [aws_sns_topic.alerts.arn]
-}
-
-# ---------- F-16 candidates: alarms that see a total outage quickly ----------
-# With no target registered the load balancer publishes no HealthyHostCount at
-# all, and the alarm above fired only after CloudWatch had treated about 9 minutes
-# of missing data as breaching (AWS verification, 2026-10-14). Two candidates,
-# compared in the next deployment by scaling the service to 0; the slower one is
-# removed afterwards:
-#   - the same metric with its gaps filled with 0 by metric math;
-#   - the service's running task count from Container Insights, which reports 0.
-
-resource "aws_cloudwatch_metric_alarm" "no_healthy_targets_filled" {
-  alarm_name          = "${local.name}-api-no-healthy-targets-filled"
-  alarm_description   = "No healthy API task behind the load balancer (gaps counted as 0, F-16 candidate). Patients cannot book. See docs/runbook.md."
-  evaluation_periods  = 2
-  threshold           = 1
-  comparison_operator = "LessThanThreshold"
-  treat_missing_data  = "breaching"
-
+  # With no target registered the load balancer publishes no HealthyHostCount at
+  # all, and an alarm on the raw metric waited about 10 minutes before treating the
+  # gap as breaching. Filling gaps with 0 halved that to about 5 minutes (F-16,
+  # AWS verification 2026-10-14); a Container Insights running-task alarm took 8.
   metric_query {
     id          = "filled"
     expression  = "FILL(hosts, 0)"
@@ -179,28 +149,9 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets_filled" {
     }
   }
 
-  actions_enabled = local.deploy # F-14: no notifications before the service exists
-  alarm_actions   = [aws_sns_topic.alerts.arn]
-  ok_actions      = [aws_sns_topic.alerts.arn]
-}
-
-resource "aws_cloudwatch_metric_alarm" "no_running_tasks" {
-  alarm_name          = "${local.name}-api-no-running-tasks"
-  alarm_description   = "No API task running (Container Insights, F-16 candidate). Patients cannot book. See docs/runbook.md."
-  namespace           = "ECS/ContainerInsights"
-  metric_name         = "RunningTaskCount"
-  statistic           = "Minimum"
-  period              = 60
-  evaluation_periods  = 2
-  threshold           = 1
-  comparison_operator = "LessThanThreshold"
-  treat_missing_data  = "breaching"
-
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = "${local.name}-api"
-  }
-
+  # The base stack has a load balancer but no service yet, so this alarm is in
+  # ALARM until the service apply (F-14). Notifications start with the service:
+  # no false alert during deployment, and a later outage still notifies.
   actions_enabled = local.deploy
   alarm_actions   = [aws_sns_topic.alerts.arn]
   ok_actions      = [aws_sns_topic.alerts.arn]

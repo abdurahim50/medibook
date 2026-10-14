@@ -40,9 +40,9 @@ Times are UTC on 14 October (morning in Chicago). Account ID, endpoint and email
 
 ## Still open
 
-- F-15: **fixed 2026-10-14:** until a task's first successful check, and for at most 15 minutes after start-up, failures log `database not ready yet`, which the alarm does not count; tests cover all three cases. To be verified at the next deployment.
-- F-16: two candidate alarms added (gaps filled with 0 by metric math, and Container Insights `RunningTaskCount`); the next deployment scales the service to 0 to see which fires within about 3 minutes, and the other is removed.
-- F-17: **fixed 2026-10-14:** the workflow's first step checks the environment through the GitHub API (required reviewer, no administrator bypass, `main` only) and stops before AWS credentials are requested; tests cover the state that let runs 1 and 2 through. To be verified at the next deployment.
+- F-15: **fixed 2026-10-14:** until a task's first successful check, and for at most 15 minutes after start-up, failures log `database not ready yet`, which the alarm does not count; tests cover all three cases. **Verified 2026-10-14** ([follow-up](aws-verification-2026-10-14-followup.md)): no alarm during a 12-minute wait for the migration.
+- F-16: two candidate alarms added (gaps filled with 0 by metric math, and Container Insights `RunningTaskCount`); the next deployment scales the service to 0 to see which fires within about 3 minutes, and the other is removed. **Tested 2026-10-14** ([follow-up](aws-verification-2026-10-14-followup.md)): neither reached 3 minutes; gaps filled with 0 alarmed in about 5 min 15 s and replaced the original alarm's metric, Container Insights took 8 minutes and was removed. Partly fixed.
+- F-17: **fixed 2026-10-14:** the workflow's first step checks the environment through the GitHub API (required reviewer, no administrator bypass, `main` only) and stops before AWS credentials are requested; tests cover the state that let runs 1 and 2 through. **Verified 2026-10-14** ([follow-up](aws-verification-2026-10-14-followup.md)): the check passed in Actions before the role was assumed.
 - F-8 limits that IAM cannot close: AWS administrators are unconstrained, and command overrides on `ecs:RunTask` have no condition key.
 - F-7: alert on mass `DELETE` (row counts).
 - MB-008: sign-up still answers `409` for a registered email until confirm-by-email sign-up exists.
