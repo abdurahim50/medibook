@@ -31,7 +31,7 @@ My goal was to connect application security, cloud infrastructure and operations
 
 A healthy endpoint is one part of verification. I also needed to check which identity could run a migration, whether an alert reached its destination, and how the service recovered after failure. Unit tests, policy checks and live drills each answered different questions.
 
-I learned to distinguish configured controls, observed results and remaining gaps. The evidence records what I tested; the limitations below explain where more work is needed before production use.
+I learned to distinguish configured controls, observed results and remaining gaps. The evidence records what I tested; the README's [known limitations](../README.md#known-limitations) explain where more work is needed before production use.
 
 ## Milestones
 
