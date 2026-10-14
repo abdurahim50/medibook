@@ -45,6 +45,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MediBook", version="0.1.0", lifespan=lifespan)
 bearer = HTTPBearer(auto_error=False)
 logger = logging.getLogger("medibook.api")
+if not logger.handlers:
+    # Without a handler Python prints only WARNING and above (its last-resort
+    # handler), so the INFO "database not ready yet" lines (F-15) would be lost.
+    _handler = logging.StreamHandler()  # stderr, as before
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 
 @app.exception_handler(RequestValidationError)
