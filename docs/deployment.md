@@ -89,7 +89,7 @@ The migration role is set on a GitHub environment instead, so only jobs in that 
 - **Deployment branches and tags:** selected branches, `main` only
 - **Environment variable** `AWS_MIGRATE_ROLE_ARN`: `terraform output -raw migrate_role_arn` (from `infra/bootstrap`)
 
-The AWS role trusts only jobs running in that environment; the environment's rules decide who and which branch.
+The AWS role trusts only jobs running in that environment; the environment's rules decide who and which branch. Those rules are GitHub settings, not code, so the workflow's first step ([`scripts/check-migrate-environment.sh`](../scripts/check-migrate-environment.sh)) checks them and stops before requesting AWS credentials if a reviewer is missing, administrators can bypass, or branches other than `main` are allowed (F-17). To check by hand: `GITHUB_REPOSITORY=abdurahim50/medibook scripts/check-migrate-environment.sh`.
 
 ## Policy checks
 

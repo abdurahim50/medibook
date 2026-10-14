@@ -22,6 +22,8 @@ output "alarms" {
   value = [
     aws_cloudwatch_metric_alarm.denied.alarm_name,
     aws_cloudwatch_metric_alarm.no_healthy_targets.alarm_name,
+    aws_cloudwatch_metric_alarm.no_healthy_targets_filled.alarm_name,
+    aws_cloudwatch_metric_alarm.no_running_tasks.alarm_name,
     aws_cloudwatch_metric_alarm.destructive_sql.alarm_name,
     aws_cloudwatch_metric_alarm.database_unreachable.alarm_name,
   ]

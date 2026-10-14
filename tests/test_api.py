@@ -88,6 +88,7 @@ def test_scheduled_probe_logs_outage_without_any_requests(monkeypatch, caplog):
         raise psycopg.OperationalError("connection to server at db.internal failed")
 
     monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "0")
     monkeypatch.setattr("app.main.get_connection", database_down)
     with caplog.at_level(logging.WARNING, logger="medibook.api"), TestClient(app):
         time.sleep(0.5)  # no requests sent
@@ -103,12 +104,68 @@ def test_scheduled_probe_keeps_running_after_an_unexpected_error(monkeypatch, ca
         raise RuntimeError("Unable to locate credentials")
 
     monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "0")
     monkeypatch.setattr("app.main.get_connection", no_credentials)
     with caplog.at_level(logging.WARNING, logger="medibook.api"), TestClient(app):
         time.sleep(0.5)
     failures = [r.getMessage() for r in caplog.records if r.name == "medibook.api"]
     assert len(failures) >= 2
     assert set(failures) == {"readiness check failed: RuntimeError"}
+
+
+def probe_messages(caplog):
+    return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "medibook.api"]
+
+
+def test_failures_before_the_first_success_do_not_alarm_during_the_grace_period(monkeypatch, caplog):
+    """F-15: a new task before its migration logs "not ready yet", not the alarm line."""
+    from app.main import app
+
+    def role_missing():
+        raise psycopg.OperationalError('password authentication failed for user "medibook_app"')
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "60")
+    monkeypatch.setattr("app.main.get_connection", role_missing)
+    with caplog.at_level(logging.INFO, logger="medibook.api"), TestClient(app):
+        time.sleep(0.3)
+    messages = probe_messages(caplog)
+    assert len(messages) >= 2
+    assert set(messages) == {("INFO", "database not ready yet: OperationalError")}
+
+
+def test_failures_alarm_once_the_grace_period_is_over_without_a_success(monkeypatch, caplog):
+    """A task that never reaches its database still alerts after the grace period."""
+    from app.main import app
+
+    def role_missing():
+        raise psycopg.OperationalError("down")
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "0.2")
+    monkeypatch.setattr("app.main.get_connection", role_missing)
+    with caplog.at_level(logging.INFO, logger="medibook.api"), TestClient(app):
+        time.sleep(0.5)
+    messages = [m for _, m in probe_messages(caplog)]
+    assert "database not ready yet: OperationalError" in messages
+    assert messages[-1] == "readiness check failed: OperationalError"
+
+
+def test_failures_after_a_success_alarm_immediately(client, monkeypatch, caplog):
+    """Once the database has been reached, an outage is real even inside the grace period."""
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "60")
+    from app.main import readiness
+
+    readiness.reset(60)
+    assert client.get("/ready").status_code == 200
+
+    def database_down():
+        raise psycopg.OperationalError("down")
+
+    monkeypatch.setattr("app.main.get_connection", database_down)
+    with caplog.at_level(logging.INFO, logger="medibook.api"):
+        assert client.get("/ready").status_code == 503
+    assert probe_messages(caplog) == [("WARNING", "readiness check failed: OperationalError")]
 
 
 def test_scheduled_probe_can_be_turned_off(monkeypatch):

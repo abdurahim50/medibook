@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager, suppress
 
 import psycopg
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
     # No schema changes here: the API's database role cannot run DDL (finding F-8).
     # The schema is created by `python -m app.seed`, run as the database owner.
     app.state.signin_limiter = SigninLimiter()
+    readiness.reset(float(os.environ.get("MEDIBOOK_READINESS_GRACE_SECONDS", "900")))
     interval = float(os.environ.get("MEDIBOOK_READINESS_PROBE_SECONDS", "60"))
     probe = asyncio.create_task(probe_readiness(interval)) if interval > 0 else None
     yield
@@ -132,14 +134,48 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+class Readiness:
+    """Decides how a failed database check is logged (F-15).
+
+    A new task starts before the migration that creates its database role, and the
+    migration waits for a person's approval. Until the first successful check, and
+    for at most `grace_seconds` after start-up, failures are logged as "database not
+    ready yet", which the database-unreachable alarm does not count. After the first
+    success, or once the grace period is over, they are logged as "readiness check
+    failed" and alarm as before: a task that never reaches its database still alerts.
+    """
+
+    def __init__(self) -> None:
+        self.reset(0.0)
+
+    def reset(self, grace_seconds: float) -> None:
+        self.grace_seconds = grace_seconds
+        self.started_at = time.monotonic()
+        self.seen_ready = False
+
+    def succeeded(self) -> None:
+        self.seen_ready = True
+
+    def failed(self, exc: BaseException) -> None:
+        # Log the error class only: connection errors can include host names.
+        name = type(exc).__name__
+        if not self.seen_ready and time.monotonic() - self.started_at < self.grace_seconds:
+            logger.info("database not ready yet: %s", name)
+        else:
+            logger.warning("readiness check failed: %s", name)
+
+
+readiness = Readiness()
+
+
 def database_ready() -> bool:
     try:
         with get_connection() as conn:
             conn.execute("SELECT 1")
     except psycopg.Error as exc:
-        # Log the error class only: connection errors can include host names.
-        logger.warning("readiness check failed: %s", type(exc).__name__)
+        readiness.failed(exc)
         return False
+    readiness.succeeded()
     return True
 
 
@@ -158,7 +194,7 @@ async def probe_readiness(interval: float) -> None:
         try:
             await asyncio.to_thread(database_ready)
         except Exception as exc:  # e.g. no AWS credentials for the IAM token: keep probing
-            logger.warning("readiness check failed: %s", type(exc).__name__)
+            readiness.failed(exc)
         next_check += interval
         while next_check <= loop.time():  # overran: skip to the next free slot
             next_check += interval

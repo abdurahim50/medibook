@@ -8,11 +8,14 @@ name: Migrate database
 # approval and allows main only. Only jobs in that environment can assume the AWS
 # migration role, and that role can start this one task definition and nothing
 # else (infra/bootstrap). The task runs as defined: no command override.
+# Those environment rules are GitHub settings, not code, so the first step checks
+# them and stops before any AWS credentials are requested if one is missing (F-17).
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read # read the environment's protection rules (F-17)
   id-token: write # GitHub OIDC token, exchanged for the AWS migration role
 
 concurrency:
@@ -31,7 +34,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: migrate-dev
+    if: github.ref == 'refs/heads/main'
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the approval gate is still in place
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/check-migrate-environment.sh migrate-dev
+
       - name: Assume AWS migration role
         env:
           ROLE_ARN: ${{ vars.AWS_MIGRATE_ROLE_ARN }}
