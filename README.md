@@ -338,6 +338,7 @@ diagrams/
   architecture.drawio.png   editable architecture diagram
 certs/         RDS certificate authorities for verified TLS (public)
 SECURITY.md    security controls, known issues, reporting
+LICENSE        MIT License
 ```
 
 ## Known limitations
@@ -367,3 +368,7 @@ See [SECURITY.md](SECURITY.md) for the security model, known issues and how to r
 - AI-assisted patient intake
 
 Completed milestones and their evidence are listed in the [engineering case study](docs/case-study.md#milestones).
+
+## License
+
+Released under the [MIT License](LICENSE).
