@@ -218,9 +218,15 @@ resource "aws_ecs_service" "api" {
 }
 
 # Where the migration workflow runs the task. Read by the GitHub migration role,
-# which has no access to Terraform state (F-8). Not a secret.
+# which has no access to Terraform state (F-8). Subnet and security group IDs,
+# not a secret; built once here because the provider marks a parameter's value
+# sensitive, and an output read from it would be hidden too.
+locals {
+  migrate_network = "awsvpcConfiguration={subnets=[${join(",", aws_subnet.public[*].id)}],securityGroups=[${aws_security_group.task.id}],assignPublicIp=ENABLED}"
+}
+
 resource "aws_ssm_parameter" "migrate_network" {
   name  = "/${var.project}/${var.environment}/migrate/network"
   type  = "String"
-  value = "awsvpcConfiguration={subnets=[${join(",", aws_subnet.public[*].id)}],securityGroups=[${aws_security_group.task.id}],assignPublicIp=ENABLED}"
+  value = local.migrate_network
 }

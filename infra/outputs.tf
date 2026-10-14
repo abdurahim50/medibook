@@ -39,7 +39,7 @@ output "db_secret_arn" {
 
 output "migrate_network" {
   description = "Network configuration for running the migration task (aws ecs run-task --network-configuration)."
-  value       = aws_ssm_parameter.migrate_network.value
+  value       = local.migrate_network
 }
 
 output "migrate_task_definition" {
