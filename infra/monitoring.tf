@@ -118,7 +118,8 @@ resource "aws_cloudwatch_metric_alarm" "denied" {
 resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
   alarm_name          = "${local.name}-api-no-healthy-targets"
   alarm_description   = "No healthy API task behind the load balancer. Patients cannot book. See docs/runbook.md."
-  evaluation_periods  = 2
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
   threshold           = 1
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "breaching" # no data from the target group means nothing is serving
@@ -127,6 +128,8 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
   # all, and an alarm on the raw metric waited about 10 minutes before treating the
   # gap as breaching. Filling gaps with 0 halved that to about 5 minutes (F-16,
   # AWS verification 2026-10-14); a Container Insights running-task alarm took 8.
+  # Require 2 of 3 periods so one delayed, zero-filled datapoint cannot alarm.
+  # Detection latency for this revised window must be measured after deployment.
   metric_query {
     id          = "filled"
     expression  = "FILL(hosts, 0)"
@@ -151,8 +154,9 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
 
   # The base stack has a load balancer but no service yet, so this alarm is in
   # ALARM until the service apply (F-14). Notifications start with the service:
-  # no false alert during deployment, and a later outage still notifies.
-  actions_enabled = local.deploy
+  # no false alert while migration waits with desired_count=0. Scaling a live
+  # service to zero outside Terraform still alerts because this setting stays on.
+  actions_enabled = local.deploy && var.desired_count > 0
   alarm_actions   = [aws_sns_topic.alerts.arn]
   ok_actions      = [aws_sns_topic.alerts.arn]
 }
@@ -205,7 +209,7 @@ resource "aws_cloudwatch_metric_alarm" "destructive_sql" {
 # in a real outage; requiring 2 minutes still ignores the one slow first IAM
 # sign-in after a deployment (F-11). A once-a-minute synthetic /ready check
 # would also trip it.
-# Limit: it needs traffic or someone calling /ready.
+# Each API task also emits this signal from its scheduled database probe.
 
 resource "aws_cloudwatch_log_metric_filter" "database_unreachable" {
   name           = "${local.name}-api-database-unreachable"

@@ -14,6 +14,6 @@ output "plan_role_arn" {
 }
 
 output "migrate_role_arn" {
-  description = "Set as the AWS_MIGRATE_ROLE_ARN variable of the migrate-dev GitHub environment."
+  description = "Set as the AWS_MIGRATE_ROLE_ARN variable of the migrate-dev-v2 GitHub environment."
   value       = aws_iam_role.migrate.arn
 }

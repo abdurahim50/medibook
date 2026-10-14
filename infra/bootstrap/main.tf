@@ -230,6 +230,8 @@ resource "aws_iam_role_policy" "plan" {
 # the container command (ECS offers no IAM condition on overrides). The workflow
 # is the only holder of the role and passes no override; changing it needs a
 # reviewed pull request. Human administrators are outside this control.
+# The v2 environment subject excludes historical guardless workflow runs. Set
+# up its main-only approval protection before applying this role trust change.
 
 locals {
   env_name                = "${var.project}-${var.environment}"

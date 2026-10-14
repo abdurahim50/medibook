@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
 
 import psycopg
 from psycopg.errors import UniqueViolation
@@ -32,7 +33,7 @@ async def lifespan(app: FastAPI):
     # No schema changes here: the API's database role cannot run DDL (finding F-8).
     # The schema is created by `python -m app.seed`, run as the database owner.
     app.state.signin_limiter = SigninLimiter()
-    readiness.reset(float(os.environ.get("MEDIBOOK_READINESS_GRACE_SECONDS", "900")))
+    readiness.reset(startup_grace_seconds())
     interval = float(os.environ.get("MEDIBOOK_READINESS_PROBE_SECONDS", "60"))
     probe = asyncio.create_task(probe_readiness(interval)) if interval > 0 else None
     yield
@@ -144,12 +145,11 @@ def health() -> dict:
 class Readiness:
     """Decides how a failed database check is logged (F-15).
 
-    A new task starts before the migration that creates its database role, and the
-    migration waits for a person's approval. Until the first successful check, and
-    for at most `grace_seconds` after start-up, failures are logged as "database not
-    ready yet", which the database-unreachable alarm does not count. After the first
-    success, or once the grace period is over, they are logged as "readiness check
-    failed" and alarm as before: a task that never reaches its database still alerts.
+    Normal startup has no grace. For an explicitly configured bootstrap deadline,
+    `grace_seconds` is the remaining time, not a new window on each restart.
+    Until the first successful check or that deadline, failures are logged as
+    "database not ready yet", which the database-unreachable alarm does not count.
+    All subsequent failures use "readiness check failed" and are alarmable.
     """
 
     def __init__(self) -> None:
@@ -173,6 +173,43 @@ class Readiness:
 
 
 readiness = Readiness()
+
+
+def startup_grace_seconds() -> float:
+    """Optional, fixed bootstrap deadline; restarts never renew the window.
+
+    Normal deployments have no grace. An operator may explicitly set a UTC
+    deadline for a controlled bootstrap, at most 15 minutes in the future.
+    Relative startup grace is rejected rather than silently extending an outage.
+    """
+    if float(os.environ.get("MEDIBOOK_READINESS_GRACE_SECONDS", "0")) != 0:
+        raise ValueError("Use MEDIBOOK_READINESS_GRACE_UNTIL instead of a relative grace period")
+    value = os.environ.get("MEDIBOOK_READINESS_GRACE_UNTIL", "")
+    if not value:
+        return 0.0
+    deadline = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if deadline.tzinfo is None or deadline.utcoffset().total_seconds() != 0:
+        raise ValueError("MEDIBOOK_READINESS_GRACE_UNTIL must be an ISO 8601 UTC timestamp")
+    remaining = (deadline - datetime.now(timezone.utc)).total_seconds()
+    if remaining > 900:
+        raise ValueError("MEDIBOOK_READINESS_GRACE_UNTIL must be at most 15 minutes ahead")
+    return max(0.0, remaining)
+
+
+@app.exception_handler(psycopg.OperationalError)
+@app.exception_handler(psycopg.InterfaceError)
+async def database_unavailable(request: Request, exc: psycopg.Error):
+    """Expected connection failures use the same signal as the scheduled probe.
+
+    No raw database error, connection details or traceback are returned or
+    logged. Failures after bootstrap still emit the alarm's warning marker.
+    """
+    readiness.failed(exc)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "Service temporarily unavailable"},
+        headers={"Retry-After": "60"},
+    )
 
 
 def database_ready() -> bool:

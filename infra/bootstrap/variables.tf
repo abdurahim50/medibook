@@ -72,5 +72,5 @@ variable "environment" {
 variable "migrate_github_environment" {
   description = "GitHub environment the migration workflow runs in. Its protection rules (required reviewer, main only) are part of the control (F-8)."
   type        = string
-  default     = "migrate-dev"
+  default     = "migrate-dev-v2"
 }

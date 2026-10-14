@@ -83,13 +83,17 @@ Set the role ARNs as repository variables (GitHub: Settings → Secrets and vari
 | `AWS_RELEASE_ROLE_ARN` | `terraform output -raw release_role_arn` | Release workflow: push, sign and attest images |
 | `AWS_PLAN_ROLE_ARN` | `terraform output -raw plan_role_arn` | CI `Terraform plan` job: read-only, plans both stacks and checks policies |
 
-The migration role is set on a GitHub environment instead, so only jobs in that environment can use it (F-8). GitHub: Settings → Environments → New environment `migrate-dev`:
+The migration role is set on a GitHub environment instead, so only jobs in that environment can use it (F-8). GitHub: Settings → Environments → New environment `migrate-dev-v2`:
 
-- **Required reviewers:** yourself (every migration waits for an approval)
+- **Required reviewers:** yourself for this single-person training project (every migration waits for approval)
+- **Allow administrators to bypass:** disabled
+- For a team or production environment, require an independent reviewer and prevent self-review.
 - **Deployment branches and tags:** selected branches, `main` only
 - **Environment variable** `AWS_MIGRATE_ROLE_ARN`: `terraform output -raw migrate_role_arn` (from `infra/bootstrap`)
 
-The AWS role trusts only jobs running in that environment; the environment's rules decide who and which branch. Those rules are GitHub settings, not code, so the workflow's first step ([`scripts/check-migrate-environment.sh`](../scripts/check-migrate-environment.sh)) checks them and stops before requesting AWS credentials if a reviewer is missing, administrators can bypass, or branches other than `main` are allowed (F-17). To check by hand: `GITHUB_REPOSITORY=abdurahim50/medibook scripts/check-migrate-environment.sh`.
+The AWS role trusts only jobs running in that environment; the environment's rules decide who and which branch. Those rules are GitHub settings, not code, so the workflow's first step ([`scripts/check-migrate-environment.sh`](../scripts/check-migrate-environment.sh)) checks them and stops before requesting AWS credentials if a reviewer is missing, administrators can bypass, or branches other than `main` are allowed (F-17). To check by hand: `GITHUB_REPOSITORY=abdurahim50/medibook scripts/check-migrate-environment.sh`. In Actions, the guard also rejects fixture overrides and a run whose commit is no longer the current main head. Redispatch if main changes while approval is pending.
+
+**One-time migration environment transition:** configure and check `migrate-dev-v2` before applying the bootstrap trust change. The new trust accepts only this environment, so old runs using `migrate-dev` cannot assume the role. Keep the old runs as historical evidence. Remove any explicit `migrate_github_environment = "migrate-dev"` override from bootstrap configuration. Environment administrators remain a trusted boundary: changing those protections is outside the guard's enforcement. The AWS subject is environment-scoped, not workflow-scoped; do not claim resistance to a malicious GitHub administrator.
 
 ## Policy checks
 
@@ -146,21 +150,27 @@ terraform apply base.tfplan
 # 2. Take the digest from the latest Release workflow run summary on main and
 #    record it in terraform.tfvars (image_digest = "sha256:...")
 
-# 3. Plan: Terraform verifies the image signature and SBOM attestation during the
-#    plan, and the plan fails if they do not verify. Then check policy and apply.
-terraform plan -out=service.tfplan
+# 3. Prepare signed task definitions with no API tasks running. The database
+#    role and schema must exist before patients can reach the new service.
+terraform plan -var desired_count=0 -out=service.tfplan
 ../scripts/policy-check.sh service.tfplan
 terraform apply service.tfplan
 
 # 4. Run the migration once: schema, application role and grants, demo data.
-#    Until it has run, /ready returns 503 and requests fail.
+#    The API remains stopped while approval is pending.
 #    GitHub → Actions → "Migrate database" → Run workflow (main), then approve the
-#    migrate-dev deployment. The job fails unless the task exits 0. With the gh CLI:
+#    migrate-dev-v2 deployment. The job fails unless the task exits 0. With the gh CLI:
 #    gh workflow run migrate.yml --ref main
 #    Running the task by hand still works for an administrator (break glass; see
 #    the runbook) but is no longer the routine path (F-8).
 
-# 5. Check it
+# 5. Only after the migration workflow succeeds, start the API. This also
+#    enables availability notifications. Do not use startup grace routinely.
+terraform plan -var desired_count=1 -out=start-api.tfplan
+../scripts/policy-check.sh start-api.tfplan
+terraform apply start-api.tfplan
+
+# Check it
 curl -s "$(terraform output -raw api_url)/health"
 curl -s "$(terraform output -raw api_url)/ready"
 
@@ -170,6 +180,8 @@ curl -s "$(terraform output -raw api_url)/ready"
 #    publishes a test notification. Confirm the test email arrives.
 ../scripts/check-alerting.sh --test
 ```
+
+For a controlled exceptional bootstrap, `MEDIBOOK_READINESS_GRACE_UNTIL` may specify a fixed UTC deadline at most 15 minutes ahead. It is unset by default, survives restarts without renewal, and ends early after a successful check. Do not set it for routine replacement tasks. The old nonzero `MEDIBOOK_READINESS_GRACE_SECONDS` configuration is rejected. Database connection failures on patient endpoints return controlled `503` responses and use the same log signal as the probe.
 
 The demo password, when needed: `aws ssm get-parameter --name /medibook/dev/seed-password --with-decryption --query Parameter.Value --output text`.
 

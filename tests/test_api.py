@@ -5,7 +5,7 @@ tests/conftest.py), so tests never depend on each other.
 """
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 import pytest
@@ -117,6 +117,12 @@ def probe_messages(caplog):
     return [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "medibook.api"]
 
 
+def bootstrap_deadline(monkeypatch, seconds):
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "0")
+    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_UNTIL",
+                       (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat())
+
+
 def test_failures_before_the_first_success_do_not_alarm_during_the_grace_period(monkeypatch, caplog):
     """F-15: a new task before its migration logs "not ready yet", not the alarm line."""
     from app.main import app
@@ -125,7 +131,7 @@ def test_failures_before_the_first_success_do_not_alarm_during_the_grace_period(
         raise psycopg.OperationalError('password authentication failed for user "medibook_app"')
 
     monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
-    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "60")
+    bootstrap_deadline(monkeypatch, 60)
     monkeypatch.setattr("app.main.get_connection", role_missing)
     with caplog.at_level(logging.INFO, logger="medibook.api"), TestClient(app):
         time.sleep(0.3)
@@ -142,7 +148,7 @@ def test_failures_alarm_once_the_grace_period_is_over_without_a_success(monkeypa
         raise psycopg.OperationalError("down")
 
     monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.05")
-    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "0.2")
+    bootstrap_deadline(monkeypatch, 0.2)
     monkeypatch.setattr("app.main.get_connection", role_missing)
     with caplog.at_level(logging.INFO, logger="medibook.api"), TestClient(app):
         time.sleep(0.5)
@@ -165,7 +171,7 @@ def test_api_log_keeps_info_lines():
 
 def test_failures_after_a_success_alarm_immediately(client, monkeypatch, caplog):
     """Once the database has been reached, an outage is real even inside the grace period."""
-    monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "60")
+    bootstrap_deadline(monkeypatch, 60)
     from app.main import readiness
 
     readiness.reset(60)
