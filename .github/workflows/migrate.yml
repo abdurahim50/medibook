@@ -4,7 +4,7 @@ name: Migrate database
 # the medibook_app role and its grants, demo data. It is the only routine way to
 # use the database admin credentials (F-8).
 #
-# The job runs in the migrate-dev GitHub environment, which requires a reviewer's
+# The job runs in the migrate-dev-v2 GitHub environment, which requires a reviewer's
 # approval and allows main only. Only jobs in that environment can assume the AWS
 # migration role, and that role can start this one task definition and nothing
 # else (infra/bootstrap). The task runs as defined: no command override.
@@ -19,7 +19,7 @@ permissions:
   id-token: write # GitHub OIDC token, exchanged for the AWS migration role
 
 concurrency:
-  group: migrate-dev
+  group: migrate-dev-v2
   cancel-in-progress: false # never interrupt a running migration
 
 env:
@@ -33,7 +33,7 @@ jobs:
     name: Run migration task
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    environment: migrate-dev
+    environment: migrate-dev-v2
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,7 +43,7 @@ jobs:
       - name: Check the approval gate is still in place
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/check-migrate-environment.sh migrate-dev
+        run: scripts/check-migrate-environment.sh migrate-dev-v2
 
       - name: Assume AWS migration role
         env:

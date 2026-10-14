@@ -8,7 +8,7 @@ import pytest
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "check-migrate-environment.sh"
 
 PROTECTED = {
-    "name": "migrate-dev",
+    "name": "migrate-dev-v2",
     "can_admins_bypass": False,
     "protection_rules": [
         {"type": "required_reviewers", "prevent_self_review": False,
@@ -34,7 +34,7 @@ def run(tmp_path, environment, policies):
 def test_protected_environment_passes(tmp_path):
     result = run(tmp_path, PROTECTED, MAIN_ONLY)
     assert result.returncode == 0, result.stderr
-    assert "OK: migrate-dev requires 1 reviewer(s)" in result.stdout
+    assert "OK: migrate-dev-v2 requires 1 reviewer(s)" in result.stdout
 
 
 def without_reviewers():
@@ -62,3 +62,37 @@ def test_missing_gate_fails(tmp_path, environment, policies, reason):
 def test_every_problem_is_reported(tmp_path):
     result = run(tmp_path, {**without_reviewers(), "deployment_branch_policy": None}, {})
     assert result.stderr.count("FAIL:") == 3
+
+
+def test_fixture_override_is_forbidden_in_actions(tmp_path):
+    result = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True,
+                            env={"PATH": "/usr/bin:/bin:/usr/local/bin", "GITHUB_ACTIONS": "true",
+                                 "ENV_JSON_FILE": "fake.json", "POLICIES_JSON_FILE": "fake.json"})
+    assert result.returncode == 1
+    assert "fixture files are forbidden" in result.stderr
+
+
+@pytest.mark.parametrize("ref, sha, current_sha, allowed", [
+    ("refs/heads/main", "new-revision", "new-revision", True),
+    ("refs/heads/main", "old-revision", "new-revision", False),
+    ("refs/heads/feature", "new-revision", "new-revision", False),
+])
+def test_actions_requires_current_main_revision(tmp_path, ref, sha, current_sha, allowed):
+    """A queued approval cannot execute a stale guarded workflow revision."""
+    env_file, policies_file = tmp_path / "environment.json", tmp_path / "policies.json"
+    env_file.write_text(json.dumps(PROTECTED))
+    policies_file.write_text(json.dumps(MAIN_ONLY))
+    gh = tmp_path / "gh"
+    gh.write_text('#!/bin/sh\ncase "$2" in\n'
+                  '  */branches/main) printf "%s\\n" "$MOCK_MAIN_SHA";;\n'
+                  '  */deployment-branch-policies) cat "$MOCK_POLICIES";;\n'
+                  '  *) cat "$MOCK_ENVIRONMENT";;\nesac\n')
+    gh.chmod(0o755)
+    result = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True, env={
+        "PATH": f"{tmp_path}:/usr/bin:/bin", "GITHUB_ACTIONS": "true",
+        "GITHUB_REPOSITORY": "abdurahim50/medibook", "GITHUB_REF": ref, "GITHUB_SHA": sha,
+        "MOCK_MAIN_SHA": current_sha, "MOCK_ENVIRONMENT": str(env_file),
+        "MOCK_POLICIES": str(policies_file),
+    })
+    assert result.returncode == (0 if allowed else 1)
+    assert ("OK:" in result.stdout) == allowed

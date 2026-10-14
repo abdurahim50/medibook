@@ -18,7 +18,7 @@ TG=$(aws elbv2 describe-target-groups --names medibook-dev-api --query 'TargetGr
 
 **Meaning:** the load balancer has no healthy API task. Patients cannot sign in or book.
 
-**During a fresh deployment (F-14):** between the base and service applies the target group is empty, so this alarm is in ALARM without notifying: its actions are enabled only by the service apply. Expect one OK email once the service is healthy. An ALARM email at any other time is real. Verified 2026-10-14. Detection is slow: with no task registered the load balancer publishes no data, and an alarm on the raw metric fired about 10 minutes after the last task stopped (F-16). The alarm now counts those gaps as 0, which cut detection to about 5 minutes (verified 2026-10-14).
+**During a fresh deployment (F-14):** between the base and service applies the target group is empty, so this alarm is in ALARM without notifying: its actions are enabled only once an image is deployed and Terraform desired_count is positive. Expect one OK email once the service is healthy. An ALARM email at any other time is real. Verified 2026-10-14. Detection is slow: with no task registered the load balancer publishes no data, and an alarm on the raw metric fired about 10 minutes after the last task stopped (F-16). The previous 2-of-2 filled-metric alarm was observed to detect that test outage in about 5 min 15 s. The revised alarm requires 2 of 3 periods to tolerate one delayed datapoint; its latency and healthy-state stability are pending live verification. No fixed detection maximum is promised.
 
 ### 1. Confirm impact
 
@@ -140,9 +140,9 @@ aws logs tail $LOG_GROUP --since 15m | grep -E "readiness check failed|Operation
 | RDS not `available` (`modifying`, `rebooting`, `renaming`) | Planned change, restore cutover or maintenance | Wait, or follow the data incident below |
 | RDS `available`, `ConnectionTimeout` once just after a deploy | First IAM sign-in is slow (F-11); the timeout is 10 s with IAM | Usually clears within a minute; investigate if it repeats |
 | RDS `available`, `PAM authentication failed` in the database log | IAM sign-in refused: task role policy, `rds_iam` grant, or IAM authentication off after a restore | Check `aws_iam_role_policy.api_task`; re-run the migration task; restore with `--enable-iam-database-authentication` |
-| RDS `available`, `role "medibook_app" does not exist` | Migration not run on this database | Run the migration task (docs/deployment.md, step 4) |
+| RDS `available`, `role "medibook_app" does not exist` | Migration not run on this database | Run the migration task (docs/deployment.md, step 4; migrate-dev-v2 approval) |
 
-**Coverage:** each API task checks the database on a fixed one-minute schedule (`MEDIBOOK_READINESS_PROBE_SECONDS`, default 60; a slow check does not delay the next) and logs the same line as `/ready`, so an outage alarms with no traffic (F-12). Expect a short ALARM then OK right after a fresh deployment if the migration has not run within two minutes of the tasks starting: until then the application role does not exist. A single failure (such as the slow first IAM sign-in after a deploy, F-11) does not alarm, because two minutes in a row are needed.
+**Coverage:** each API task checks the database on a fixed one-minute schedule (`MEDIBOOK_READINESS_PROBE_SECONDS`, default 60; a slow check does not delay the next) and logs the same line as `/ready`, so an outage alarms with no traffic (F-12). Migrate before starting API tasks, as in the deployment guide. Failures are alarmable from the first check by default. An optional fixed UTC bootstrap deadline suppresses the warning marker only until that deadline or the first successful check; task replacements do not renew it. Patient endpoints return generic 503 responses for connection failures and use the same signal as the probe. A single failure (such as the slow first IAM sign-in after a deploy, F-11) does not alarm, because two minutes in a row are needed.
 
 ---
 
