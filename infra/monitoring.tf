@@ -140,6 +140,72 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
   ok_actions      = [aws_sns_topic.alerts.arn]
 }
 
+# ---------- F-16 candidates: alarms that see a total outage quickly ----------
+# With no target registered the load balancer publishes no HealthyHostCount at
+# all, and the alarm above fired only after CloudWatch had treated about 9 minutes
+# of missing data as breaching (AWS verification, 2026-10-14). Two candidates,
+# compared in the next deployment by scaling the service to 0; the slower one is
+# removed afterwards:
+#   - the same metric with its gaps filled with 0 by metric math;
+#   - the service's running task count from Container Insights, which reports 0.
+
+resource "aws_cloudwatch_metric_alarm" "no_healthy_targets_filled" {
+  alarm_name          = "${local.name}-api-no-healthy-targets-filled"
+  alarm_description   = "No healthy API task behind the load balancer (gaps counted as 0, F-16 candidate). Patients cannot book. See docs/runbook.md."
+  evaluation_periods  = 2
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+
+  metric_query {
+    id          = "filled"
+    expression  = "FILL(hosts, 0)"
+    label       = "Healthy hosts, gaps as 0"
+    return_data = true
+  }
+
+  metric_query {
+    id = "hosts"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HealthyHostCount"
+      period      = 60
+      stat        = "Minimum"
+
+      dimensions = {
+        LoadBalancer = aws_lb.api.arn_suffix
+        TargetGroup  = aws_lb_target_group.api.arn_suffix
+      }
+    }
+  }
+
+  actions_enabled = local.deploy # F-14: no notifications before the service exists
+  alarm_actions   = [aws_sns_topic.alerts.arn]
+  ok_actions      = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "no_running_tasks" {
+  alarm_name          = "${local.name}-api-no-running-tasks"
+  alarm_description   = "No API task running (Container Insights, F-16 candidate). Patients cannot book. See docs/runbook.md."
+  namespace           = "ECS/ContainerInsights"
+  metric_name         = "RunningTaskCount"
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 2
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = "${local.name}-api"
+  }
+
+  actions_enabled = local.deploy
+  alarm_actions   = [aws_sns_topic.alerts.arn]
+  ok_actions      = [aws_sns_topic.alerts.arn]
+}
+
 # ---------- Data signal: destructive SQL in the database log ----------
 # Matches on markers PostgreSQL writes the same way however the SQL was spelled
 # (MB-007: patterns are case-sensitive, SQL is not):
