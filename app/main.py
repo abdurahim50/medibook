@@ -147,20 +147,21 @@ async def probe_readiness(interval: float) -> None:
     """Check the database on a schedule, with or without traffic (F-12).
 
     Failures log the same line as /ready, so the database-unreachable alarm sees
-    an outage even when no one is calling the API. Checks run on a fixed schedule
-    (every `interval` seconds from start-up), so a slow check does not stretch the
-    gap to the next one.
+    an outage even when no one is calling the API. Checks start on a fixed grid
+    (every `interval` seconds from start-up): a slow check does not stretch the gap
+    to the next one, and slots a check overran are skipped, not run back to back.
     """
     loop = asyncio.get_running_loop()
     next_check = loop.time() + interval
     while True:
         await asyncio.sleep(max(0.0, next_check - loop.time()))
-        # A check that overran its slot is not made up for: no bursts after a stall.
-        next_check = max(next_check + interval, loop.time())
         try:
             await asyncio.to_thread(database_ready)
         except Exception as exc:  # e.g. no AWS credentials for the IAM token: keep probing
             logger.warning("readiness check failed: %s", type(exc).__name__)
+        next_check += interval
+        while next_check <= loop.time():  # overran: skip to the next free slot
+            next_check += interval
 
 
 @app.get("/ready")

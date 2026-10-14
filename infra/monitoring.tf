@@ -132,8 +132,12 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_targets" {
     TargetGroup  = aws_lb_target_group.api.arn_suffix
   }
 
-  alarm_actions = [aws_sns_topic.alerts.arn]
-  ok_actions    = [aws_sns_topic.alerts.arn]
+  # The base stack has a load balancer but no service yet, so this alarm is in
+  # ALARM until the service apply (F-14). Notifications start with the service:
+  # no false alert during deployment, and a later outage still notifies.
+  actions_enabled = local.deploy
+  alarm_actions   = [aws_sns_topic.alerts.arn]
+  ok_actions      = [aws_sns_topic.alerts.arn]
 }
 
 # ---------- Data signal: destructive SQL in the database log ----------

@@ -49,3 +49,13 @@ The reviewer confirmed MB-009, MB-010, F-12 and F-13 with no blocking defect, an
 | R-11 | `MEDIBOOK_READINESS_PROBE_SECONDS` missing from [`.env.example`](../../../.env.example) | Added with its default and `0` to turn it off | n/a |
 
 **Verified in AWS, 2026-10-13** ([evidence](../deployment/aws-verification-2026-10-13.md)): the reviewer noted that `check-alerting.sh --test` publishes to SNS directly, so it proves the subscription but not CloudWatch's path to the topic. With the database cut off and no traffic, the alarm fired in 3 min 3 s and both the ALARM and OK emails were delivered; probe failures were exactly 60 s apart (R-10).
+
+## Fifth round (commit `c340126`)
+
+The reviewer accepted F-12 and F-13 as verified from the AWS evidence and listed three remaining items, in priority order.
+
+| # | Finding | Fix | Test |
+| --- | --- | --- | --- |
+| F-8 | Anyone allowed to run the migration task, or to pass its execution role, gets database-owner access | Open; planned next: separate execution roles so only the migration task can read the admin secret, and migrations run from CI through a dedicated role ([recovery drills](../deployment/recovery-drills.md)) | n/a |
+| F-14 | Fresh deployments raise a false no-healthy-targets alarm | The alarm's actions are enabled by the service apply ([`infra/monitoring.tf`](../../../infra/monitoring.tf)) | Next deployment: no ALARM email during the deploy; service scaled to 0 still alerts |
+| R-12 | R-10's fix was incomplete: a check longer than the interval was followed immediately by another (reproduced: 0.0014 s apart). The round 4 entry claimed overrun slots were skipped; they were not | Checks stay on the start-up grid and skip every slot a slow check overran ([`app/main.py`](../../../app/main.py)) | [`tests/test_api.py`](../../../tests/test_api.py): 0.3 s checks on a 0.2 s grid start 0.4 s apart; fails on the previous code |

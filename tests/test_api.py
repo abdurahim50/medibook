@@ -144,6 +144,28 @@ def test_slow_checks_do_not_stretch_the_probe_schedule(monkeypatch):
     assert max(gaps) < 0.15
 
 
+def test_checks_longer_than_the_interval_skip_slots_instead_of_running_back_to_back(monkeypatch):
+    """A 0.3 s check on a 0.2 s grid overruns one slot: the next check waits for the
+    following slot (0.4 s after the last start), it does not start the moment the
+    slow one ends (0.3 s)."""
+    from app.main import app
+
+    starts = []
+
+    def overrunning_check():
+        starts.append(time.monotonic())
+        time.sleep(0.3)
+        raise psycopg.OperationalError("down")
+
+    monkeypatch.setenv("MEDIBOOK_READINESS_PROBE_SECONDS", "0.2")
+    monkeypatch.setattr("app.main.get_connection", overrunning_check)
+    with TestClient(app):
+        time.sleep(1.5)
+    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    assert len(starts) >= 3
+    assert min(gaps) > 0.35
+
+
 # ---------- Authentication ----------
 
 def test_signup_does_not_return_password_or_hash(client):
