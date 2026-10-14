@@ -151,6 +151,18 @@ def test_failures_alarm_once_the_grace_period_is_over_without_a_success(monkeypa
     assert messages[-1] == "readiness check failed: OperationalError"
 
 
+def test_api_log_keeps_info_lines():
+    """F-15's "not ready yet" lines are INFO; without a handler of its own the API
+    logger would print WARNING and above only, and they would never reach the log."""
+    from app.main import logger
+
+    assert logger.isEnabledFor(logging.INFO)
+    record = logger.makeRecord(logger.name, logging.INFO, __file__, 0,
+                               "database not ready yet: %s", ("OperationalError",), None)
+    assert [h.format(record) for h in logger.handlers] == [
+        "INFO medibook.api: database not ready yet: OperationalError"]
+
+
 def test_failures_after_a_success_alarm_immediately(client, monkeypatch, caplog):
     """Once the database has been reached, an outage is real even inside the grace period."""
     monkeypatch.setenv("MEDIBOOK_READINESS_GRACE_SECONDS", "60")
