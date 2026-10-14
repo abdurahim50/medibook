@@ -28,11 +28,11 @@ Times are UTC on 13 October (21:00 to 21:45 on 12 October in Chicago). Account I
 
 ## New finding
 
-**F-14: every fresh deployment raises a false no-healthy-targets alarm.** The base stack creates the load balancer, target group and alarm; the service comes in the second apply. With no targets the alarm treats missing data as breaching: INSUFFICIENT_DATA to ALARM at 02:08:38, back to OK at 02:20:38 once the service was healthy, and an alarm email in between. It trains people to ignore that alarm. Fix: create the alarm with the service, or enable its actions only when the service exists.
+**F-14: every fresh deployment raises a false no-healthy-targets alarm.** The base stack creates the load balancer, target group and alarm; the service comes in the second apply. With no targets the alarm treats missing data as breaching: INSUFFICIENT_DATA to ALARM at 02:08:38, back to OK at 02:20:38 once the service was healthy, and an alarm email in between. It trains people to ignore that alarm. Fix: create the alarm with the service, or enable its actions only when the service exists. **Fixed 2026-10-13:** actions are enabled by the service apply (`actions_enabled`), to be verified at the next deployment together with a real outage (service scaled to 0).
 
 ## Still open
 
-- F-14: no-healthy-targets alarm during the two-stage deployment.
+- F-14: fixed in code; verify at the next deployment that no ALARM email arrives during the deploy and that scaling the service to 0 still alerts.
 - F-8: `ecs:RunTask` with command overrides limited to a break-glass role.
 - F-7: alert on mass `DELETE` (row counts).
 - MB-008: sign-up still answers `409` for a registered email until confirm-by-email sign-up exists.

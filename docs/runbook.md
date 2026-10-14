@@ -18,7 +18,7 @@ TG=$(aws elbv2 describe-target-groups --names medibook-dev-api --query 'TargetGr
 
 **Meaning:** the load balancer has no healthy API task. Patients cannot sign in or book.
 
-**Expected during a fresh deployment (F-14):** between the base and service applies the target group is empty, so this alarm fires and clears once the service is healthy. Any other time it is real.
+**During a fresh deployment (F-14):** between the base and service applies the target group is empty, so this alarm is in ALARM without notifying: its actions are enabled only by the service apply. Expect one OK email once the service is healthy. An ALARM email at any other time is real.
 
 ### 1. Confirm impact
 
