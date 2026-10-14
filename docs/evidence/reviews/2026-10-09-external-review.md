@@ -1,5 +1,7 @@
 # External review, 2026-10-09
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](../deployment/aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 An independent AI review of commit `99bc1af` (OpenAI) from source, CI logs and isolated local checks; it did not operate the AWS environment. Every finding was reproduced or checked before it was fixed.
 
 | # | Finding | Verified how | Fix | Test |

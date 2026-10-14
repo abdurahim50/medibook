@@ -1,5 +1,7 @@
 # RDS PostgreSQL in AWS dev
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 Date: 2026-10-06 (America/Chicago; log times in UTC). AWS account ID replaced with `111122223333`, the RDS endpoint hash with `xxxxxxxxxxxx`, the secret ARN suffix with `-XXXXXX` and client public IPs with documentation addresses.
 
 Shipped in [PR #19](https://github.com/abdurahim50/medibook/pull/19), merge commit [`3ed7e3a`](https://github.com/abdurahim50/medibook/commit/3ed7e3a). Deployed image `sha256:2088b8d3936837c9855dd3f3ba74b4296bfe80b528f648557d4b757fbaa81199`, built and signed by Release run #12 from that commit.

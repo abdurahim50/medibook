@@ -1,5 +1,7 @@
 # AWS verification, 2026-10-12
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 The fixes from the [external review](../reviews/2026-10-09-external-review.md) and drill 5 were tested only locally and in CI until now. This session deployed `main` to AWS and checked each one against the live environment, then destroyed it.
 
 - **Image:** release `d4b66cdee920`, deployed by digest (`sha256:51babdc2...`), signature and SBOM attestation verified during the plan

@@ -1,5 +1,7 @@
 # AWS verification, 2026-10-13
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 The [first verification](aws-verification-2026-10-12.md) left two items open: alarms reached no one because the email subscription was never confirmed (F-13), and the database-unreachable alarm only fired when something called `/ready` (F-12). Both were fixed in [PR #37](https://github.com/abdurahim50/medibook/pull/37) and [PR #38](https://github.com/abdurahim50/medibook/pull/38). This session deployed `main` and tested them, then destroyed the environment.
 
 - **Image:** release `dc73bfe101a3`, deployed by digest (`sha256:7c2094...`), signature and SBOM attestation verified during the plan

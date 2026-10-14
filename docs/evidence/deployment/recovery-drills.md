@@ -1,5 +1,7 @@
 # Recovery drills, AWS dev
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 Incidents simulated against the running deployment and handled with [the runbook](../../runbook.md). All times are UTC. Drills 1 and 2: 2026-10-05, SQLite on the task. Drill 3: 2026-10-06, RDS PostgreSQL. Drill 4: 2026-10-08, database restore. Drill 5: 2026-10-09, drill 4 repeated after the hardening sprint (least-privilege database role, destructive-SQL alarm, liveness and readiness split).
 
 ## Drill 1: credential stuffing (security alarm)

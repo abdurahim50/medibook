@@ -1,5 +1,7 @@
 # AWS verification, 2026-10-14 (follow-up)
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 The [morning verification](aws-verification-2026-10-14.md) found three issues: a false database-unreachable alarm while the migration waits for approval (F-15), a total outage taking about 9 minutes to alarm (F-16), and the approval gate living only in GitHub settings (F-17). [PR #43](https://github.com/abdurahim50/medibook/pull/43) fixed F-15 and F-17 and added two candidate alarms for F-16; [PR #44](https://github.com/abdurahim50/medibook/pull/44) made the API's INFO lines reach the log. This session deployed `main`, tested all three, then destroyed the environment.
 
 - **Image:** release `267dd6c`, deployed by digest (`sha256:64ce17...`), signature and SBOM attestation verified before and during the plan
@@ -21,6 +23,8 @@ Times are UTC on 14 October (afternoon in Chicago). Account ID, endpoint and ema
 | F-16 recovery | Service scaled to 1 at 18:11:51 | Alarms clear | **Pass.** Running tasks OK at 18:14:39; both load balancer alarms OK at 18:15:42; OK emails delivered; `/ready` `ok` |
 
 ## Notes
+
+**Later timing clarification:** the approximately five-minute result below was one observation of the previous alarm configuration, not a floor or a guaranteed bound. The later 2-of-3 round 6 drill observed an alarm transition 4 min 3 s after the scaling request.
 
 - **The quiet period covered the whole wait.** The task started about 17:46:43, so its grace period ran to about 18:01:43; the migration finished 84 s before that. A longer wait would have raised the alarm at that point, by design.
 - **Container Insights did not help.** Its running-task count also stops reporting once no task is left, so its alarm waited on missing data like the original. It is turned off again (it adds cost).
