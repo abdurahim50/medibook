@@ -3,6 +3,7 @@
 [![CI](https://github.com/abdurahim50/medibook/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/abdurahim50/medibook/actions/workflows/ci.yml)
 [![Release](https://github.com/abdurahim50/medibook/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/abdurahim50/medibook/actions/workflows/release.yml)
 [![Synthetic data only](https://img.shields.io/badge/Data-synthetic%20only-orange)](docs/brief.md#assumptions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 Appointment booking API for outpatient clinics. Patients create an account, browse open appointment slots, book a visit and view their own bookings.
 
@@ -11,6 +12,12 @@ The current release provides the patient booking API. Staff tools and an AI-assi
 > **Data notice:** this environment runs on synthetic data only. It holds no real patient information and is not intended for clinical use.
 
 **Status:** the latest AWS deployment was verified on 2026-10-14 ([evidence](docs/evidence/deployment/aws-verification-2026-10-14-round6.md)); the dev environment is created for each verification session and destroyed afterwards, so the badges reflect workflow status on `main`, not a running service. How the project was built and tested is described in the [engineering case study](docs/case-study.md).
+
+**Contents:** [Why I built this](#why-i-built-this) · [Features](#features) · [Architecture](#architecture) · [Quick start](#quick-start) · [Deploy to AWS](#deploy-to-aws) · [API reference](#api-reference) · [Testing](#testing) · [Skills demonstrated](#skills-demonstrated) · [Challenges solved](#challenges-solved) · [What I learned](#what-i-learned) · [Known limitations](#known-limitations) · [Security](#security) · [Roadmap](#roadmap) · [License](#license)
+
+## Why I Built This
+
+Before moving into security engineering, I worked in HIPAA-regulated compliance, where I saw how much depends on patient data staying private and systems staying available. I built MediBook to learn how those requirements are enforced in code, infrastructure and operations, and to verify controls through automated tests and live AWS drills. [Full background](docs/case-study.md#background).
 
 ## Patient workflow
 
@@ -49,6 +56,17 @@ Target production architecture on AWS. Edit `diagrams/architecture.drawio.png` i
 | Operations | CloudWatch logs, metrics and alarms; CloudTrail and GuardDuty for audit and threat detection |
 
 The dev deployment is a cost-reduced slice of this design: see [docs/deployment.md](docs/deployment.md). **[Implemented architecture and deployment flow](docs/architecture.md)** contains the existing Mermaid delivery and request diagrams, plus a comparison of the dev environment and production target. Remaining gaps are on the [roadmap](#roadmap).
+
+Request path in the dev deployment (delivery and migration flow: [architecture walkthrough](docs/architecture.md#delivery-path)):
+
+```mermaid
+flowchart LR
+  C["Patient client"] --> W["WAF and ALB"]
+  W --> T["API task: non-root, read-only"]
+  T -->|"Verified TLS, IAM token"| D[("Private RDS PostgreSQL")]
+  M["Approved migration task"] -->|"Admin credentials"| D
+  T --> L["CloudWatch alarms and SNS"]
+```
 
 ### Application stack
 
@@ -99,7 +117,9 @@ See the [product brief](docs/brief.md) for users, protected data and scope.
 
 Security controls are mapped to NIST SP 800-53 Rev. 5, with evidence and known gaps, in [docs/controls.md](docs/controls.md).
 
-## Getting started
+## Quick start
+
+Run the API locally with the copy-paste commands below.
 
 **Prerequisites:** Git, Docker, Python 3.14 with `venv`, and the PostgreSQL client library (`sudo apt install libpq5`). Commands target Ubuntu or Ubuntu on WSL2.
 
@@ -247,7 +267,7 @@ source .venv/bin/activate
 PGDATABASE=medibook_test python -m pytest -q
 ```
 
-Use the same shell and PostgreSQL settings from Getting started; set `PGDATABASE=medibook_test` for the tests. Tests use real PostgreSQL. The fixtures drop and recreate tables, so [`tests/conftest.py`](tests/conftest.py) refuses a database whose name does not end in `_test`. The suite covers the patient journey, ownership, concurrent booking, validation, audit logging, throttling, headers, UTC timestamps, the API database role's limits, and RDS IAM tokens. Round 6 added controlled database-error responses, default-zero and fixed-deadline readiness behavior, and migration guard checks. [Recorded result](docs/evidence/deployment/aws-verification-2026-10-14-round6.md): 145 passed on Python 3.14 with PostgreSQL.
+Use the same shell and PostgreSQL settings from [Quick start](#quick-start); set `PGDATABASE=medibook_test` for the tests. Tests use real PostgreSQL. The fixtures drop and recreate tables, so [`tests/conftest.py`](tests/conftest.py) refuses a database whose name does not end in `_test`. The suite covers the patient journey, ownership, concurrent booking, validation, audit logging, throttling, headers, UTC timestamps, the API database role's limits, and RDS IAM tokens. Round 6 added controlled database-error responses, default-zero and fixed-deadline readiness behavior, and migration guard checks. [Recorded result](docs/evidence/deployment/aws-verification-2026-10-14-round6.md): 145 passed on Python 3.14 with PostgreSQL.
 
 ### Continuous integration
 
@@ -340,6 +360,29 @@ certs/         RDS certificate authorities for verified TLS (public)
 SECURITY.md    security controls, known issues, reporting
 LICENSE        MIT License
 ```
+
+## Skills demonstrated
+
+- **Application security:** patient identity from server-side sessions, ownership checks, strict validation, double-booking protection
+- **Least privilege:** RDS IAM authentication for the API; an approval-gated migration role restricted to the designated migration task-definition family and cluster
+- **Infrastructure as code:** Terraform with Conftest policy checks on every saved plan
+- **Software supply chain:** hash-pinned dependencies, SBOMs, keyless image signing verified at plan time
+- **Security testing:** SAST, dependency, secret, container and authenticated DAST scans in CI
+- **Operations:** CloudWatch alarms with confirmed delivery, outage and point-in-time restore drills
+
+Details and evidence: [case study](docs/case-study.md#skills-demonstrated).
+
+## Challenges solved
+
+- **Migrations separated from the API:** fresh AWS deployments run the approved migration before starting API tasks.
+- **Startup failures that could hide an outage:** no quiet period by default, so a task that never connects still alarms.
+- **Outages invisible to the load balancer metric:** missing data counted as zero, verified by a live scaling drill.
+
+How each was found and verified: [case study](docs/case-study.md#challenges-solved).
+
+## What I learned
+
+A healthy endpoint is only one part of verification: I also had to prove who could run a migration, that alerts reached a person, and how the service recovered. [More](docs/case-study.md#what-i-learned).
 
 ## Known limitations
 
