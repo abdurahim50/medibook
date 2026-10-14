@@ -10,13 +10,7 @@ The current release provides the patient booking API. Staff tools and an AI-assi
 
 > **Data notice:** this environment runs on synthetic data only. It holds no real patient information and is not intended for clinical use.
 
-Latest verified deployment: [round 6, 2026-10-14](docs/evidence/deployment/aws-verification-2026-10-14-round6.md). All 145 local tests and all 12 PR checks passed; the approved migration, API readiness, alert delivery, outage detection and recovery were verified. The dev deployment was removed after the session. CI and Release badges show workflow status on `main`, not whether an AWS service is running.
-
-## Why I Built This
-
-I built MediBook as a CyberAgoge portfolio project to practise securing an application through its full delivery cycle. Appointment booking gave me concrete problems to solve: keeping each patient's bookings private, preventing double booking, and recovering when a dependency fails.
-
-My goal was to connect application security, cloud infrastructure and operations in one project, with tests and deployment evidence I could explain. All patient data is synthetic, and the project is a learning environment.
+**Status:** the latest AWS deployment was verified on 2026-10-14 ([evidence](docs/evidence/deployment/aws-verification-2026-10-14-round6.md)); the dev environment is created for each verification session and destroyed afterwards, so the badges reflect workflow status on `main`, not a running service. How the project was built and tested is described in the [engineering case study](docs/case-study.md).
 
 ## Patient workflow
 
@@ -332,6 +326,7 @@ tests/
 docs/
   brief.md         product brief: users, data and assets
   architecture.md  delivery and request paths, dev versus production
+  case-study.md    engineering background, challenges and milestones
   threat-model.md  data flow, STRIDE analysis and controls
   controls.md      NIST SP 800-53 control mapping, evidence and gaps
   evidence.md      delivery evidence by milestone
@@ -344,29 +339,6 @@ diagrams/
 certs/         RDS certificate authorities for verified TLS (public)
 SECURITY.md    security controls, known issues, reporting
 ```
-
-## Skills demonstrated
-
-| Area | What I implemented | Evidence |
-| --- | --- | --- |
-| Application security | Session-based patient identity, ownership checks, input validation and double-booking protection | [API tests](tests/test_api.py), [threat model](docs/threat-model.md) |
-| Least privilege | RDS IAM authentication for the API and a separate approval-gated migration role | [Database role tests](tests/test_least_privilege.py), [architecture](docs/architecture.md) |
-| Infrastructure as code | Terraform infrastructure and Conftest policies checked before apply | [Policy rules and tests](policy/README.md), [deployment guide](docs/deployment.md) |
-| Software supply chain | Dependency hashes, pinned images and actions, SBOM generation, image signing and plan-time verification | [Release workflow](.github/workflows/release.yml), [verification script](scripts/verify-image-terraform.sh) |
-| Security testing | Automated SAST, dependency, secret, container and authenticated API scans | [CI workflow](.github/workflows/ci.yml), [scan evidence](docs/evidence.md) |
-| Operations and recovery | Database probes, CloudWatch alarms, confirmed SNS delivery, outage and database recovery drills | [Round 6 verification](docs/evidence/deployment/aws-verification-2026-10-14-round6.md), [recovery drills](docs/evidence/deployment/recovery-drills.md) |
-
-## Challenges solved
-
-- **Separating migrations from the API.** I moved schema changes into an approval-gated workflow with a dedicated AWS role, then verified the migration before starting API tasks. [Delivery flow](docs/architecture.md#delivery-path).
-- **Handling database startup failures.** A restartable quiet period could hide a task that never connected. Startup now has no grace by default; an exceptional grace period uses a fixed UTC deadline and ends on first success. [Readiness tests](tests/test_readiness.py).
-- **Detecting an outage when the load balancer stops publishing data.** I tested alarm candidates and retained a filled healthy-host metric. The round 6 drill alarmed 4 min 3 s after scaling began and returned to OK after recovery. This is a measured result from one drill. [Deployment evidence](docs/evidence/deployment/aws-verification-2026-10-14-round6.md).
-
-## What I learned
-
-A healthy endpoint is one part of verification. I also needed to check which identity could run a migration, whether an alert reached its destination, and how the service recovered after failure. Unit tests, policy checks and live drills each answered different questions.
-
-I learned to distinguish configured controls, observed results and remaining gaps. The evidence records what I tested; the limitations below explain where more work is needed before production use.
 
 ## Known limitations
 
@@ -386,26 +358,12 @@ I learned to distinguish configured controls, observed results and remaining gap
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for the security model, known issues and how to report a vulnerability.
+See [SECURITY.md](SECURITY.md) for the security model, known issues and how to report a vulnerability. Design and verification records: [threat model](docs/threat-model.md), [NIST SP 800-53 control mapping](docs/controls.md), [evidence index](docs/evidence.md).
 
 ## Roadmap
 
-- [x] Booking API with authentication and validation
-- [x] Appointment ownership enforcement on single-record lookups
-- [x] CI pipeline with automated tests and security scanning
-- [x] Hardened container image with image scanning
-- [x] Audit logging and sign-in throttling
-- [x] AWS deployment with Terraform (ECS Fargate, ALB, WAF)
-- [x] Alerting, recovery runbook and recovery drills
-- [x] CI build, SBOM and image signing, published through GitHub OIDC
-- [x] Policy checks on Terraform plans (Conftest, NIST SP 800-53 mapped)
-- [x] Authenticated DAST (OWASP ZAP) on every pull request
-- [x] Signature verification enforced at deploy time (Terraform plan)
-- [x] Terraform plan and policy checks in CI with a read-only role
-- [x] RDS PostgreSQL: private, KMS-encrypted, verified TLS, point-in-time recovery
-- [x] Tested point-in-time restore with measured RTO and RPO (23 min 50 s, no data lost)
-- [x] Least-privilege database role with IAM authentication, destructive-SQL alarm and liveness/readiness split, verified by repeating the restore drill (drill 5)
-- [x] Migration-first deployment, v2 approval environment and revised availability alarm, verified in the round 6 deployment drill
-- [ ] Split Terraform into modules when a second environment is added
-- [ ] Clinic staff portal
-- [ ] AI-assisted patient intake
+- Split Terraform into modules when a second environment is added
+- Clinic staff portal
+- AI-assisted patient intake
+
+Completed milestones and their evidence are listed in the [engineering case study](docs/case-study.md#milestones).
