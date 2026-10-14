@@ -2,13 +2,13 @@
 
 ## Company
 
-MediBook provides online appointment booking for outpatient clinics. Patients book, view and manage visits without phoning the clinic.
+MediBook is a portfolio appointment-booking API for outpatient clinics, built with synthetic data. The implemented patient flow supports registration, booking and viewing visits. Staff tools, cancellation, rescheduling and AI intake are planned.
 
 ## Users
 
 | Role | Status | Description |
 | --- | --- | --- |
-| Patient | Live | Registers, books appointments and views their own bookings |
+| Patient | Implemented | Registers, books appointments and views their own bookings |
 | Clinic staff | Planned | Manages clinic schedules and bookings for their clinic |
 | Administrator | Planned | Manages clinics, staff accounts and platform settings |
 

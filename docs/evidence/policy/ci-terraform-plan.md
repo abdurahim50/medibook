@@ -1,5 +1,7 @@
 # Terraform plan and policy checks in CI
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](../deployment/aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 Date: 2026-10-06 (America/Chicago). AWS account ID replaced with `111122223333`.
 
 ## What changed

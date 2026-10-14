@@ -1,5 +1,7 @@
 # AWS verification, 2026-10-14
 
+> Historical evidence: this record describes the versions, configuration and results from its stated session. Use the [current deployment guide](../../deployment.md) and [round 6 verification](aws-verification-2026-10-14-round6.md) for the later implementation and rollout.
+
 The [follow-up verification](aws-verification-2026-10-13.md) left two fixes untested in AWS: migrations through an approved workflow and a dedicated role (F-8, [PR #41](https://github.com/abdurahim50/medibook/pull/41)), and no false alarm email during a deployment (F-14, [PR #40](https://github.com/abdurahim50/medibook/pull/40)). This session deployed `main`, tested both, then destroyed the environment.
 
 - **Image:** release `0d78b8d5de11`, deployed by digest, signature and SBOM attestation verified during the plan

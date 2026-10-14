@@ -18,7 +18,7 @@ TG=$(aws elbv2 describe-target-groups --names medibook-dev-api --query 'TargetGr
 
 **Meaning:** the load balancer has no healthy API task. Patients cannot sign in or book.
 
-**During a fresh deployment (F-14):** between the base and service applies the target group is empty, so this alarm is in ALARM without notifying: its actions are enabled only once an image is deployed and Terraform desired_count is positive. Expect one OK email once the service is healthy. An ALARM email at any other time is real. Verified 2026-10-14. Detection is slow: with no task registered the load balancer publishes no data, and an alarm on the raw metric fired about 10 minutes after the last task stopped (F-16). The previous 2-of-2 filled-metric alarm was observed to detect that test outage in about 5 min 15 s. The revised alarm requires 2 of 3 periods to tolerate one delayed datapoint; its latency and healthy-state stability are pending live verification. No fixed detection maximum is promised.
+**During a fresh deployment (F-14):** the empty target group can put this alarm in ALARM while notifications are disabled. Actions are enabled only when an image is configured and Terraform desired count is positive. Complete the approved migration with zero API tasks, then start the API. The current alarm evaluates `FILL(hosts, 0)` with two breaching periods out of three; one zero-filled period alone is insufficient. In the [round 6 drill](evidence/deployment/aws-verification-2026-10-14-round6.md), it transitioned to ALARM 4 min 3 s after the scaling request and returned to OK after recovery. An ALARM email is an operational signal to investigate. Neither detection nor recovery has a guaranteed maximum, and long-term stability was not established by this single drill.
 
 ### 1. Confirm impact
 
@@ -76,8 +76,14 @@ aws logs tail $LOG_GROUP --since 15m
 
 - `/health` returns `200`, target `healthy`, alarm back to `OK`.
 - Record start time, detection time, recovery time, cause and follow-up actions in `docs/evidence/`.
+- If the target is healthy and both endpoints return 200 while the alarm is still ALARM, inspect its reason before changing the threshold:
+  ```bash
+  aws cloudwatch describe-alarms --alarm-names medibook-dev-api-no-healthy-targets \
+    --query 'MetricAlarms[0].{State:StateValue,Updated:StateUpdatedTimestamp,Reason:StateReason}' --output json
+  ```
+  In round 6, endpoints were healthy at 20:52:23 UTC and the alarm cleared at 20:52:41 using datapoints from 20:48 and 20:49. Keep the distinction between request recovery and alarm recovery in the evidence.
 
-**Known gap:** this alarm needs 2 consecutive minutes without a healthy target. A crash that ECS heals in under 2 minutes does not alarm (recovery drill, 2026-10-05: 32-second outage, no alarm). Check `aws ecs describe-services ... events` after any unexplained 503s.
+**Known gap:** this alarm needs two breaching 60-second periods out of the last three and depends on delayed load-balancer metrics. Short outages may recover without alarming. The earlier 32-second crash drill was not detected; its consecutive-period alarm configuration is historical. Check recent ECS events after unexplained 503s and consider independent task-stopped or 5xx signals for short crashes.
 
 Data lives in RDS, so a replaced task loses no bookings (drill 3).
 
@@ -123,7 +129,7 @@ Note the time window, sources, accounts affected and actions taken in `docs/evid
 
 ## Alarm: `medibook-dev-api-database-unreachable`
 
-**Meaning:** in each of 2 consecutive minutes, the API logged at least one failed readiness check or database connection error. `/health` stays `200` and the load balancer keeps the task, so the no-healthy-targets alarm does not fire for this (F-6, F-12). Patients get errors on sign-in and booking.
+**Meaning:** in each of 2 consecutive minutes, the API logged at least one failed readiness check or database connection error. `/health` stays `200` and the load balancer keeps the task, so the no-healthy-targets alarm does not fire for this (F-6, F-12). Database-backed patient requests return a controlled 503 with Retry-After: 60. The alarm is evidence of a connectivity failure, not a diagnosis of its cause.
 
 ### 1. Confirm
 
@@ -138,8 +144,8 @@ aws logs tail $LOG_GROUP --since 15m | grep -E "readiness check failed|Operation
 | What you see | Likely cause | Action |
 | --- | --- | --- |
 | RDS not `available` (`modifying`, `rebooting`, `renaming`) | Planned change, restore cutover or maintenance | Wait, or follow the data incident below |
-| RDS `available`, `ConnectionTimeout` once just after a deploy | First IAM sign-in is slow (F-11); the timeout is 10 s with IAM | Usually clears within a minute; investigate if it repeats |
-| RDS `available`, `PAM authentication failed` in the database log | IAM sign-in refused: task role policy, `rds_iam` grant, or IAM authentication off after a restore | Check `aws_iam_role_policy.api_task`; re-run the migration task; restore with `--enable-iam-database-authentication` |
+| RDS `available`, one `readiness check failed: ConnectionTimeout` | Connection timed out; the first IAM sign-in was slow in an earlier drill (F-11) | Check whether it repeats; IAM connection timeout is 10 s. Do not assume a healthy RDS status rules out a network or credential problem |
+| RDS `available`, `PAM authentication failed` in the database log | IAM sign-in refused: task role policy, `rds_iam` grant, or IAM authentication off after a restore | Check `aws_iam_role_policy.api_task`; rerun the approved migration workflow; restore with `--enable-iam-database-authentication` |
 | RDS `available`, `role "medibook_app" does not exist` | Migration not run on this database | Run the migration task (docs/deployment.md, step 4; migrate-dev-v2 approval) |
 
 **Coverage:** each API task checks the database on a fixed one-minute schedule (`MEDIBOOK_READINESS_PROBE_SECONDS`, default 60; a slow check does not delay the next) and logs the same line as `/ready`, so an outage alarms with no traffic (F-12). Migrate before starting API tasks, as in the deployment guide. Failures are alarmable from the first check by default. An optional fixed UTC bootstrap deadline suppresses the warning marker only until that deadline or the first successful check; task replacements do not renew it. Patient endpoints return generic 503 responses for connection failures and use the same signal as the probe. A single failure (such as the slow first IAM sign-in after a deploy, F-11) does not alarm, because two minutes in a row are needed.
@@ -155,7 +161,7 @@ aws logs tail $LOG_GROUP --since 15m | grep -E "readiness check failed|Operation
 ```bash
 aws logs filter-log-events --log-group-name /aws/rds/instance/medibook-dev/postgresql \
   --start-time $(( ($(date +%s) - 3600) * 1000 )) \
-  --filter-pattern '?"DROP TABLE" ?"drop table" ?DESTRUCTIVE_SQL' \
+  --filter-pattern '?"DROP TABLE" ?"drop table" ?DESTRUCTIVE_SQL ?"must be owner of" ?"permission denied for"' \
   --query 'events[].message' --output text
 ```
 
@@ -175,7 +181,7 @@ Timeline, user, statement, and outcome in `docs/evidence/`.
 
 ## Incident: data deleted or corrupted (point-in-time restore)
 
-Usually found through the alarm below (`DROP` or `TRUNCATE` in the database log); deletes that use ordinary `DELETE` statements raise no alarm and are reported by users or noticed in the data. Rehearsed in [drill 4](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore): 23 min 50 s to recover, no data lost.
+Usually found through the destructive-SQL alarm (`DROP` or `TRUNCATE` in the database log); deletes that use ordinary `DELETE` statements raise no alarm and are reported by users or noticed in the data. Rehearsed in [drill 4](evidence/deployment/recovery-drills.md#drill-4-operator-error-wipes-the-database-point-in-time-restore): 23 min 50 s to recover, no data lost.
 
 ### 1. Contain and choose the restore time
 

@@ -1,5 +1,7 @@
 # Round 6 corrections
 
+> Preparation record: the local checks and pending steps below describe the patch before rollout. [PR #46](https://github.com/abdurahim50/medibook/pull/46) was subsequently merged; [round 6 verification](../deployment/aws-verification-2026-10-14-round6.md) records the full PostgreSQL tests and completed AWS session, including what was not repeated live.
+
 Prepared against `d12024d925d7792a83ac16af3307fd1ebd6002ea`.
 
 ## Changes
