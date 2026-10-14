@@ -15,9 +15,12 @@ data "aws_iam_policy_document" "ecs_tasks_assume" {
   }
 }
 
-# Execution role: used by ECS itself to pull the image, write logs and inject
-# secrets at start. The API service's own task role (below) can do one thing only:
-# sign in to the database as medibook_app.
+# Execution roles: used by ECS itself to pull the image, write logs and inject
+# secrets at start. There are two (F-8): the API's can read no secret at all;
+# only the migration task's can read the admin credentials. A task definition
+# that names the API execution role, whoever registers it, cannot obtain them.
+# The API service's own task role (below) can do one thing only: sign in to the
+# database as medibook_app.
 resource "aws_iam_role" "execution" {
   name               = "${local.name}-task-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
@@ -42,14 +45,32 @@ data "aws_iam_policy_document" "execution" {
     resources = ["${aws_cloudwatch_log_group.api.arn}:*"]
   }
 
+}
+
+resource "aws_iam_role_policy" "execution" {
+  name   = "execution"
+  role   = aws_iam_role.execution.id
+  policy = data.aws_iam_policy_document.execution.json
+}
+
+# ---------- Migration execution role: the only holder of the admin credentials ----------
+
+resource "aws_iam_role" "migrate_execution" {
+  name               = "${local.name}-migrate-execution"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+}
+
+data "aws_iam_policy_document" "migrate_execution" {
+  # Same image and log access as the API, plus the two secrets.
+  source_policy_documents = [data.aws_iam_policy_document.execution.json]
+
   statement {
     sid       = "SeedPassword"
     actions   = ["ssm:GetParameters"]
     resources = [local.seed_password_arn]
   }
 
-  # The admin credentials RDS keeps in Secrets Manager, injected into the
-  # migration task only. The API service does not receive them.
+  # The admin credentials RDS keeps in Secrets Manager.
   statement {
     sid       = "DatabaseSecret"
     actions   = ["secretsmanager:GetSecretValue"]
@@ -63,10 +84,10 @@ data "aws_iam_policy_document" "execution" {
   }
 }
 
-resource "aws_iam_role_policy" "execution" {
+resource "aws_iam_role_policy" "migrate_execution" {
   name   = "execution"
-  role   = aws_iam_role.execution.id
-  policy = data.aws_iam_policy_document.execution.json
+  role   = aws_iam_role.migrate_execution.id
+  policy = data.aws_iam_policy_document.migrate_execution.json
 }
 
 locals {
