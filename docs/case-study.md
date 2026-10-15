@@ -6,7 +6,7 @@ How MediBook was built, what was hard, and what the evidence shows. The [README]
 
 Before moving into security engineering, I worked in HIPAA-regulated compliance, where I saw how much depends on patient data staying private and systems staying available. I built MediBook to learn the other side: how those requirements are enforced in code, infrastructure and operations rather than in policy documents.
 
-Appointment booking gave me concrete problems to solve: keeping each patient's bookings private, preventing double booking, keeping secrets out of reach of the running application, and detecting and recovering from failures. Each control is tested, deployed to AWS and checked against the live environment, and the findings, including my own mistakes, are recorded in the [evidence index](evidence.md).
+Appointment booking gave me concrete problems to solve: keeping each patient's bookings private, preventing double booking, keeping database administrator credentials out of the running API, and detecting and recovering from failures. Controls are verified through automated tests and live AWS drills, and the findings, including my own mistakes, are recorded in the [evidence index](evidence.md).
 
 My goal was to connect application security, cloud infrastructure and operations in one project I can explain end to end. All patient data is synthetic; MediBook is a learning environment, not a clinical system.
 
